@@ -1,7 +1,7 @@
 /* ###################################################################
 **     Filename    : main.c
 **     Project     : DataLogger
-**     Processor   : MK64FN1M0VLQ12
+**     Processor   : MK64FN1M0VLL12
 **     Version     : Driver 01.01
 **     Compiler    : GNU C Compiler
 **     Date/Time   : 2018-10-23, 19:57, # CodeGen: 0
@@ -64,9 +64,6 @@
 #include "CI2C1.h"
 #include "FX1.h"
 #include "PORT_PDD.h"
-#define MAX_BUFFER_SIZE 100
-#define LONG_MAX_CADENA 256
-
 
 /* Including shared modules, which are used for whole project */
 #include "PE_Types.h"
@@ -80,13 +77,6 @@
 #include "KSDK1.h"
 #include "task.h"
 
-typedef struct {
-    char tipo[8];
-    float latitud;
-    float longitud;
-} SentenciaNMEA;
-
-#define LONG_MAX 100
 
 const static byte longitud = 255;
 const static byte tamano   = 1;
@@ -113,19 +103,6 @@ void StorageOn(){
  FAT1_Init();
  if (FAT1_mount(&fileSystemObject, "0", 1) != FR_OK) /* Comprueba el archivo del sistema */
 	 Err();
-}
-
-
-void nmeaJson(const char* cadena) {
-    SentenciaNMEA sentencia;
-    int campos = sscanf(cadena, "%7[^,],%*f,%*c,%f,%*c,%f", sentencia.tipo, &sentencia.latitud, &sentencia.longitud);
-    // Comparo los 3 tipos que según la memoria de Alejandro ofrecen datos válidos
-    if (campos == 3 && (strcmp(sentencia.tipo, "$GPRMC") == 0)) {
-        // Imprimo en formato JSON
-        printf("{ \"sentence\": \"%s\", \"latitude\": %.6f, \"longitude\": %.6f }\n", sentencia.tipo, sentencia.latitud, sentencia.longitud);
-    } else {
-        printf("Formato de sentencia NMEA no reconocido o no admitido.\n");
-    }
 }
 
 /*
@@ -173,11 +150,7 @@ static void Acce(void) {
 /*
  * Tarea que imprime los caracteres, tanto por una terminal, como en la
  * tarjeta.
- /
-  *
-  */
-
-
+ */
 static void Imprime (void) {
 	char ch;
 	int i;
@@ -204,9 +177,6 @@ static void Imprime (void) {
 	}
 }
 
-
-
-
 /*
  * Tarea encargada de introducir al final de la cola los caracteres del GPS.
  */
@@ -222,10 +192,6 @@ static void CharGPS(void) {
 		FRTOS1_xQueueSendToBack(caracteres, &ch , (portTickType) 0xFFFFFFFF); //metemos el caracter a la cola
 	}
 }
-
-
-
-
 
 /* User includes (#include below this line is not maintained by Processor Expert) */
 //#include "Application.h"
@@ -255,7 +221,6 @@ int main(void)
   	  for(;;){} /* error! Probablemente sin memoria */
   	  }
 
-
     if (xTaskCreate(
     	   Imprime, /* Se encarga de sacar por pantalla y de escibir los mensajes NMEA*/
     	  "print", /* nombre de la tarea para el kernel */
@@ -265,21 +230,18 @@ int main(void)
     	  NULL /* manejo de la tarea, NULL si ni se va a crear o destruir */
       ) != pdPASS) { /* devuelve pdPASS si se ha creado la tarea */
     	  for(;;){} /* error! Probablemente sin memoria */
-    	 }
+    	  }
 
     if (xTaskCreate(
       	   Acce, /* Recoge periodicamente los valores de las coordenadas del acelerómetro*/
       	  "Acc", /* nombre de la tarea para el kernel */
       	  configMINIMAL_STACK_SIZE, /* tamaño pila asociada a la tarea */
       	  (void*)NULL, /*puntero a los parámetros iniciales de la tarea */
-      	  1,/* prioridad de la tarea, cuanto más bajo es el número menor es la prioridad */
+      	  4,/* prioridad de la tarea, cuanto más bajo es el número menor es la prioridad */
       	  NULL /* manejo de la tarea, NULL si ni se va a crear o destruir */
         ) != pdPASS) { /* devuelve pdPASS si se ha creado la tarea */
       	  for(;;){} /* error! Probablemente sin memoria */
       	  }
-
-
-
 
   /* For example: for(;;) { } */
   //APP_Run();
