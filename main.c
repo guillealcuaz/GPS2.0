@@ -15,8 +15,8 @@
 ** ###################################################################*/
 /*!
 ** @file main.c
-** @author Alejandro Fernandez Lampreave
-** @version 01.01
+** @author Alejandro Fernandez Lampreave y Guillermo Alcuaz Temiño
+** @version 2.0
 ** @brief
 **         Main module.
 **         This module contains user's application code.
@@ -76,9 +76,14 @@
 #include <queue.h>
 #include "KSDK1.h"
 #include "task.h"
+#include <math.h>
+#include <stdbool.h>
+#include <stdlib.h>
+#include "ff.h"
+#include "TmDt1.h"
 
 
-const static byte longitud = 255;
+const static byte longitud = 155;
 const static byte tamano   = 1;
 static FAT1_FATFS fileSystemObject;
 
@@ -86,7 +91,201 @@ static FIL file;
 int16_t x,y,z;
 char cadena[128];
 static xQueueHandle caracteres;
+#define SIZE 64
+#define LONG_MAX_FECHA 64
+#define LONG_MAX_CADENA 500
+#define CHAR_GPS_STACK_SIZE (configMINIMAL_STACK_SIZE *2)
+#define IMPRIME_STACK_SIZE (configMINIMAL_STACK_SIZE*4)
+#define ACCE_STACK_SIZE (configMINIMAL_STACK_SIZE)
+#define CAMPOS_NMEA 12
 
+typedef struct {
+    char latitudStr[SIZE];
+    char longitudStr[SIZE];
+    double latitud;
+    double longitud;
+    char tiempo[20];
+    char direccionLatitud;
+    char direccionLongitud;
+    char estado;
+    double velocidad;
+    double direccion;
+    char fecha[LONG_MAX_FECHA];
+} GPSData;
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void cabeceraJSON() {
+    const char *cabecera = "{ \"type\": \"FeatureCollection\",\n \"name\": \"GPS\",\n "
+                           "\"features\": [\n";
+    SendString(cabecera);
+    EscribeSD(cabecera);
+}
+
+void finJSON() {
+    const char *pie = " ] }";
+    SendString(pie);
+    EscribeSD(pie);
+}
+
+size_t escribeJSON(const GPSData* data, char* buffer, size_t buffer_size, int contadorName) {
+    if (isnan(data->latitud) || isnan(data->longitud) || isnan(data->velocidad) || isnan(data->direccion)) {
+        return 0;
+    }
+    char latStr[50] = {0}, lonStr[50] = {0}, velStr[50] = {0}, dirStr[50] = {0};
+    snprintf(lonStr, sizeof(lonStr), "%.6f", data->longitud);
+    snprintf(latStr, sizeof(latStr), "%.6f", data->latitud);
+    snprintf(velStr, sizeof(velStr), "%.1f mph", data->velocidad * 1.15078);
+    snprintf(dirStr, sizeof(dirStr), "%.2f degrees", data->direccion);
+
+    char tiempoISO[50];
+    formatearTiempoISO(tiempoISO, data->tiempo);
+
+
+    if (buffer_size < LONG_MAX_CADENA) {
+        fprintf(stderr, "Error: buffer insuficiente para JSON\n");
+        return 0;
+    }
+    int escritos = snprintf(buffer, buffer_size,
+        "{ \"type\": \"Feature\", \"properties\": { "
+        "\"Name\": \"%d\", "
+        "\"timestamp\": \"%s\", "
+        "\"Field_1\": \"Longitude: %s\", "
+        "\"Field_2\": \"Latitude: %s\", "
+        "\"Field_3\": \"Speed: %s\", "
+        "\"Field_4\": \"Direction: %s\" }, "
+        "\"geometry\": { \"type\": \"Point\", \"coordinates\": [ %s, %s ] } }",
+        contadorName,
+        tiempoISO,
+        lonStr,
+        latStr,
+        velStr,
+        dirStr,
+        lonStr,
+        latStr);
+
+    if (escritos < 0 || escritos >= buffer_size) {
+        fprintf(stderr, "Error al escribir  o buffer insuficiente\n");
+        return 0;
+    }
+    return (size_t)escritos;
+}
+
+void SendString(const char* cadena) {
+    size_t largo = strlen(cadena);
+    int enviados;
+    if (largo > 0) {
+        byte err = AS1_SendBlock(cadena, largo, &enviados);
+        if (err != ERR_OK) {
+            fprintf(stderr, "Error al enviar datos: %d\n", err);
+        } else {
+            printf("Bytes enviados: %u\n", enviados);
+        }
+    }
+}
+
+double convertirADecimal(const char* gradosMinutosStr, char direccion) {
+    char gradosStr[4] = { 0 };
+    char minutosStr[10] = { 0 };
+
+    // primeros dos dígitos son los grados para la latitud y los primeros tres para la longitud
+    int gradosCount = (direccion == 'N' || direccion == 'S') ? 2 : 3;
+    strncpy(gradosStr, gradosMinutosStr, gradosCount);
+    strncpy(minutosStr, gradosMinutosStr + gradosCount, 9);
+
+    double grados = atof(gradosStr);
+    double minutos = atof(minutosStr);
+
+    double decimal = grados + (minutos / 60.0);
+
+    if (direccion == 'S' || direccion == 'W') {
+        decimal = -decimal;
+    }
+
+    return decimal;
+}
+
+char extraerDato(GPSData* datos, char** token, void (*extractor)(GPSData*, const char*)) {
+    *token = strtok(NULL, ",");
+    if (!*token) {
+        fprintf(stderr, "Error al extraer un dato.\n");
+        return 'E';
+    }
+    extractor(datos, *token);
+    return 'P';
+}
+
+void extraerTiempo(GPSData* datos, const char* token) {
+    strncpy(datos->tiempo, token, sizeof(datos->tiempo) - 1); //copiar tiempo en estructura
+    datos->tiempo[sizeof(datos->tiempo) - 1] = '\0';
+}
+
+void extraerEstado(GPSData* datos, const char* token) {
+    datos->estado = token[0];
+}
+
+void extraerLatitud(GPSData* datos, const char* token) {
+    strncpy(datos->latitudStr, token, SIZE - 1);
+    datos->direccionLatitud = *(strtok(NULL, ","));
+    datos->latitud = convertirADecimal(datos->latitudStr, datos->direccionLatitud);
+}
+
+void extraerLongitud(GPSData* datos, const char* token) {
+    strncpy(datos->longitudStr, token, SIZE - 1);
+    datos->direccionLongitud = *(strtok(NULL, ","));
+    datos->longitud = convertirADecimal(datos->longitudStr, datos->direccionLongitud);
+}
+
+void extraerVelocidad(GPSData* datos, const char* token) {
+    sscanf(token, "%lf", &datos->velocidad);
+    datos->velocidad = datos->velocidad * 1.15078;
+}
+
+void extraerDireccion(GPSData* datos, const char* token) {
+    sscanf(token, "%lf", &datos->direccion);
+}
+
+
+void formatearTiempoISO(char* destino, const char* tiempoNmea) {
+    // tiempo al formato HH:MM:SS+00
+    int horas, minutos, segundos;
+    sscanf(tiempoNmea, "%2d%2d%2d", &horas, &minutos, &segundos);
+    snprintf(destino, 25, "%02d:%02d:%02d+00", horas, minutos, segundos);
+}
+
+void extraerFecha(GPSData* datos, const char* token) {
+    strncpy(datos->fecha, token, sizeof(datos->fecha) - 1);
+    datos->fecha[sizeof(datos->fecha) - 1] = '\0';
+}
+
+
+char parseNMEASentence(const char* cadenaNmea, GPSData* datos) {
+    memset(datos, 0, sizeof(GPSData)); // Limpia los datos anteriores
+    if (strncmp(cadenaNmea, "$GPRMC", 6) == 0) {
+        const char* token = strtok((char*)cadenaNmea, ",");
+        if (!token) {
+            fprintf(stderr, "Error: Sentencia vacía.\n");
+            return 'E';
+        }
+
+        if (extraerDato(datos, &token, extraerTiempo) == 'E' ||
+            extraerDato(datos, &token, extraerEstado) == 'E' ||
+            extraerDato(datos, &token, extraerLatitud) == 'E' ||
+            extraerDato(datos, &token, extraerLongitud) == 'E' ||
+            extraerDato(datos, &token, extraerVelocidad) == 'E' ||
+            extraerDato(datos, &token, extraerDireccion) == 'E' ||
+            extraerDato(datos, &token, extraerFecha) == 'E') {
+            fprintf(stderr, "Error al procesar un campo específico de la sentencia GPRMC.\n");
+            return 'E';
+        }
+        return 'P';
+    } else {
+        // Sentencia no GPRMC, no se procesa
+        return 'I';
+    }
+}
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static void Err(void) {
   for(;;){}
 }
@@ -101,10 +300,15 @@ void StorageOn(){
  PORT_PDD_SetPinPullEnable(PORTE_BASE_PTR, 6, PORT_PDD_PULL_ENABLE);
 /* Se inicializa el sistema de almacenamiento*/
  FAT1_Init();
- if (FAT1_mount(&fileSystemObject, "0", 1) != FR_OK) /* Comprueba el archivo del sistema */
+ if (FAT1_mount(&fileSystemObject, "0", 1) != FR_OK){ /* Comprueba el archivo del sistema */
 	 Err();
+ }
 }
 
+/*
+ * Procedimiento encargado de escribir en la tarjeta una cadena dada.
+ * @param cadena Cadena que contiene los caracteres del GPS
+ */
 /*
  * Procedimiento encargado de escribir en la tarjeta una cadena dada.
  * @param cadena Cadena que contiene los caracteres del GPS
@@ -131,6 +335,8 @@ void EscribeSD(char *cadena){
 	  (void)FAT1_close(&file);
 }
 
+
+
 /*
  * Tarea que actualiza los valores de los ejes en cada instante.
  */
@@ -151,32 +357,62 @@ static void Acce(void) {
  * Tarea que imprime los caracteres, tanto por una terminal, como en la
  * tarjeta.
  */
-static void Imprime (void) {
-	char ch;
-	int i;
 
-	StorageOn();
-	for(;;) {
-		if(FRTOS1_xQueueReceive(caracteres, &ch ,10000) == pdTRUE){ //si se recibe caracter de la cola
-			if (ch !='\n'){
-				cadena[i++] = ch;
-				cadena[i]=0;
-			}else{
-				cadena[i++] = ch;
-				if ((i>4 && cadena[3]=='R')){
-					for(int j = 0; j < i; j++)
-						while(AS1_SendChar(cadena[j]) != ERR_OK) {} //Se escribe por el puerto serie.
-					if( x>500 || x<-500 || y>500 || y<-500 ){
-						LEDR_Neg(); LEDG_Off();//Led rojo
-						EscribeSD(cadena);
-					}
-				}
-				i=0;
-			}
-		}
-	}
+static void Imprime(void) {
+    char bufferDeSentencia[LONG_MAX_CADENA];
+    int indexBuffer = 0;
+    GPSData datos;
+    char geojsonBuffer[LONG_MAX_CADENA];
+    char ch;
+    int contadorName = 0;
+    bool inicioSentenciaDetectado = false;
+    bool primeraentrada=true;
+
+    StorageOn();
+    for (;;) {
+        if (FRTOS1_xQueueReceive(caracteres, &ch, portMAX_DELAY) == pdTRUE) {
+            // Inicio de una sentencia NMEA
+            if (ch == '$') {
+                inicioSentenciaDetectado = true;
+                indexBuffer = 0;
+            }
+            if (primeraentrada) {
+                primeraentrada = false;
+                cabeceraJSON();
+            }
+            if (inicioSentenciaDetectado) {
+                // Agrega el caracter al buffer y avanza el índice
+                bufferDeSentencia[indexBuffer++] = ch;
+                //Final de sentencia
+                if (ch == '\n' || ch == '\r') {
+                    bufferDeSentencia[indexBuffer] = '\0'; // Cadena terminada
+                    char resultado = parseNMEASentence(bufferDeSentencia, &datos);
+                    if (resultado == 'P') {
+                        if (contadorName > 0) {
+                            SendString(",\n");
+                            EscribeSD(",\n");
+                        }
+                        memset(geojsonBuffer, 0, LONG_MAX_CADENA);
+                        size_t escribe = escribeJSON(&datos, geojsonBuffer, LONG_MAX_CADENA, contadorName++);
+                        if (escribe > 0) {
+                            SendString(geojsonBuffer);
+                            EscribeSD(geojsonBuffer);
+                        }
+                    }
+                    inicioSentenciaDetectado = false;
+                    indexBuffer = 0;
+                }
+
+                if (indexBuffer >= LONG_MAX_CADENA) {
+                    // Buffer desbordado
+                    inicioSentenciaDetectado = false;
+                    indexBuffer = 0;
+                }
+            }
+        }
+    }
+    finJSON();
 }
-
 /*
  * Tarea encargada de introducir al final de la cola los caracteres del GPS.
  */
@@ -200,8 +436,7 @@ int main(void)
 /*lint -restore Enable MISRA rule (6.3) checking. */
 {
   /* Write your local variable definition here */
- 	caracteres=FRTOS1_xQueueCreate(longitud,tamano);
-
+	caracteres=FRTOS1_xQueueCreate(longitud,tamano);
 	/*** Processor Expert internal initialization. DON'T REMOVE THIS CODE!!! ***/
 	PE_low_level_init();
   /*** End of Processor Expert internal initialization.                    ***/
@@ -210,43 +445,45 @@ int main(void)
   /* Write your code here */
 
 
-  if (xTaskCreate(
-  	   CharGPS, /* Introduce en la cadena de caracteres lo que recibe del módulo GPS*/
-  	  "gps", /* nombre de la tarea para el kernel */
-  	  configMINIMAL_STACK_SIZE, /* tamaño pila asociada a la tarea */
-  	  (void*)NULL, /*puntero a los parámetros iniciales de la tarea */
-  	  3,/* prioridad de la tarea, cuanto más bajo es el número menor es la prioridad */
-  	  NULL /* manejo de la tarea, NULL si ni se va a crear o destruir */
-    ) != pdPASS) { /* devuelve pdPASS si se ha creado la tarea */
-  	  for(;;){} /* error! Probablemente sin memoria */
-  	  }
 
+    // Creación de la tarea CharGPS
     if (xTaskCreate(
-    	   Imprime, /* Se encarga de sacar por pantalla y de escibir los mensajes NMEA*/
-    	  "print", /* nombre de la tarea para el kernel */
-    	  configMINIMAL_STACK_SIZE, /* tamaño pila asociada a la tarea */
-    	  (void*)NULL, /*puntero a los parámetros iniciales de la tarea */
-    	  2,/* prioridad de la tarea, cuanto más bajo es el número menor es la prioridad */
-    	  NULL /* manejo de la tarea, NULL si ni se va a crear o destruir */
-      ) != pdPASS) { /* devuelve pdPASS si se ha creado la tarea */
-    	  for(;;){} /* error! Probablemente sin memoria */
-    	  }
+        CharGPS, "gps", CHAR_GPS_STACK_SIZE, NULL, 3, NULL
+    ) != pdPASS) {
+        printf("Error al crear la tarea CharGPS\n");
+        fflush(stdout);
+        for(;;);
+    } else {
+        printf("Tarea CharGPS creada exitosamente\n");
+        fflush(stdout);
+    }
 
+    // Creación de la tarea Imprime
     if (xTaskCreate(
-      	   Acce, /* Recoge periodicamente los valores de las coordenadas del acelerómetro*/
-      	  "Acc", /* nombre de la tarea para el kernel */
-      	  configMINIMAL_STACK_SIZE, /* tamaño pila asociada a la tarea */
-      	  (void*)NULL, /*puntero a los parámetros iniciales de la tarea */
-      	  4,/* prioridad de la tarea, cuanto más bajo es el número menor es la prioridad */
-      	  NULL /* manejo de la tarea, NULL si ni se va a crear o destruir */
-        ) != pdPASS) { /* devuelve pdPASS si se ha creado la tarea */
-      	  for(;;){} /* error! Probablemente sin memoria */
-      	  }
+        Imprime, "print", IMPRIME_STACK_SIZE, NULL, 4, NULL
+    ) != pdPASS) {
+        printf("Error al crear la tarea Imprime\n");
+        for(;;);
+    } else {
+        printf("Tarea Imprime creada exitosamente\n");
+        fflush(stdout);
+    }
+
+    // Creación de la tarea Acce
+    if (xTaskCreate(
+        Acce, "Acc", ACCE_STACK_SIZE, NULL, 2, NULL
+    ) != pdPASS) {
+        printf("Error al crear la tarea Acce\n");
+        for(;;);
+    } else {
+        printf("Tarea Acce creada exitosamente\n");
+        fflush(stdout);
+    }
 
   /* For example: for(;;) { } */
   //APP_Run();
   FRTOS1_vTaskStartScheduler();
-
+//3,2,4
 
   /*** Don't write any code pass this line, or it will be deleted during code generation. ***/
   /*** RTOS startup code. Macro PEX_RTOS_START is defined by the RTOS component. DON'T MODIFY THIS CODE!!! ***/
