@@ -40,8 +40,16 @@
     <nav class="navbar navbar-light bg-light static-top">
       <div class="container">
         <a class="navbar-brand" href="#">NMEA Visualizer</a>
-        <a href="login.html" class="btn btn-primary">Iniciar sesión</a>
-
+        <?php
+        if (session_status() == PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (isset($_SESSION['id_usuario'])) {
+            echo '<a href="logout.php" class="btn btn-primary">Cerrar sesión</a>';
+        } else {
+            echo '<a href="login.html" class="btn btn-primary">Iniciar sesión</a>';
+        }
+        ?>
       </div>
     </nav>
 
@@ -64,7 +72,16 @@
       </div>
       <div class="col-lg-6" id="historico">
         <h2>Tus archivos</h2>
-        <?php include 'historico.php'; ?>
+        <?php
+        if (session_status() == PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (isset($_SESSION['id_usuario'])) {
+               include_once 'historico.php'; 
+        } else {
+            echo "<p>Inicia sesión.</p>";
+        }
+          ?>
       </div>
     </div>
   </div>
