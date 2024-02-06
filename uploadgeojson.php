@@ -3,37 +3,51 @@
 * Script que se encarga de subir un fichero al servidor en formato GeoJSON.
 * @author Guillermo Alcuaz
 */
+
+session_start();
+include 'db.php';
+//idUsuario con columna not null
+if (!isset($_SESSION['id_usuario'])) {
+    header('Location: index.php');
+}
+
 $uploadDir = 'misgeoJSON/';
+
 function esGeoJSON($archivo) {
     $contenido = file_get_contents($archivo['tmp_name']);
     $data = json_decode($contenido, true);
-  
-    if ($data === null || !isset($data['type'])) {
-        throw new Exception("El archivo no es un JSON válido.");
+    if ($data === null || !isset($data['type']) || !in_array($data['type'], ['FeatureCollection', 'Feature', 'Point', 'LineString', 'Polygon', 'MultiPoint', 'MultiLineString', 'MultiPolygon', 'GeometryCollection'])) {
+        return false;
     }
-
-    $tiposValidos = ['FeatureCollection', 'Feature', 'Point', 'LineString', 'Polygon', 'MultiPoint', 'MultiLineString', 'MultiPolygon', 'GeometryCollection'];
-    if (!in_array($data['type'], $tiposValidos)) {
-        throw new Exception("El archivo JSON no es un GeoJSON válido.");
-    }
-
-    // Puedes agregar más comprobaciones aquí si es necesario
-
     return true;
 }
 
-
-$nombreArchivo = $uploadDir . date("j-m-Y_H-i-s_") . basename($_FILES['archivo']['name']);
-
-// Mover a misgeoJSON
-if (move_uploaded_file($_FILES['archivo']['tmp_name'], $nombreArchivo)) {
+if (isset($_FILES['archivo'])) {
+    if (esGeoJSON($_FILES['archivo'])) {
+        $nombreArchivo = basename($_FILES['archivo']['name']);
+        $nombreRutaArchivo = $uploadDir . date("j-m-Y_H-i-s_") . $nombreArchivo;
+        if (move_uploaded_file($_FILES['archivo']['tmp_name'], $nombreRutaArchivo)) {
+            $stmt = $conn->prepare("INSERT INTO archivos_subidos (id_usuario, archivo, ruta, fecha_subida) VALUES (?, ?, ?, NOW())");
+            $stmt->bind_param("iss", $_SESSION['id_usuario'], $nombreArchivo, $nombreRutaArchivo);
+            if (!$stmt->execute()) {
+                header('Location: index.php');
+                exit;
+            }
+            $stmt->close();
+        } else {
+            header('Location: index.php');
+            exit;
+        }
+    } else {
+        header('Location: index.php');
+        exit;
+    }
 } else {
-    echo '<script type="text/javascript">
-            alert("Ha habido un error en la subida del fichero.");
-            window.location.href="index.html";
-          </script>';
+    header('Location: index.php');
+    exit;
 }
 
+$conn->close();
 ?>
 
 <!DOCTYPE html>
@@ -64,7 +78,7 @@ if (move_uploaded_file($_FILES['archivo']['tmp_name'], $nombreArchivo)) {
 <!--Botón para volar a tu posición--> 
 <button class="btn btn-success" id='volar'>Centrar en mi posición</button>
 <!--Regresar a la página de inicio-->
-<a class="btn btn-success" id="home" href="index.html">Volver a inicio</a>
+<a class="btn btn-success" id="home" href="index.php">Volver a inicio</a>
 
 <div id='map'> 
 <script>
@@ -86,7 +100,7 @@ Object.defineProperty(window, 'devicePixelRatio', {
     get: function() {return dpi / 96}
 });
 
-var src = "./misgeoJSON/" + "<?php echo basename($nombreArchivo); ?>";
+var src = "./misgeoJSON/" + "<?php echo basename($nombreRutaArchivo); ?>";
 
 map.on('load', function () {
 
@@ -169,6 +183,3 @@ map.on('load', function () {
 
 </script>
 </div>
-
-<?php
-?>
