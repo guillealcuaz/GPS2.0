@@ -59,12 +59,21 @@
 #include "SM1.h"
 #include "TI1.h"
 #include "TimerIntLdd1.h"
+#include "Bit2.h"
+#include "BitIoLdd4.h"
+#include "Bits1.h"
+#include "BitsIoLdd1.h"
+#include "ledRojo.h"
+#include "BitIoLdd3.h"
+#include "ledVerde.h"
+#include "BitIoLdd5.h"
 #include "TU1.h"
 #include "GI2C1.h"
 #include "CI2C1.h"
 #include "FX1.h"
 #include "PORT_PDD.h"
-
+#include "Bit1.h"
+#include "BitIoLdd6.h"
 /* Including shared modules, which are used for whole project */
 #include "PE_Types.h"
 #include "PE_Error.h"
@@ -82,21 +91,22 @@
 #include "ff.h"
 #include "TmDt1.h"
 
-
+TIMEREC time;   // Estructura para el tiempo
+DATEREC date;
 const static byte longitud = 155;
 const static byte tamano   = 1;
 static FAT1_FATFS fileSystemObject;
-
+volatile bool finalJSON=false;
 static FIL file;
 int16_t x,y,z;
-char cadena[128];
+char cadena[256];
 static xQueueHandle caracteres;
 #define SIZE 64
 #define LONG_MAX_FECHA 64
 #define LONG_MAX_CADENA 500
 #define CHAR_GPS_STACK_SIZE (configMINIMAL_STACK_SIZE *2)
 #define IMPRIME_STACK_SIZE (configMINIMAL_STACK_SIZE*4)
-#define ACCE_STACK_SIZE (configMINIMAL_STACK_SIZE)
+#define ACCE_STACK_SIZE (configMINIMAL_STACK_SIZE*2)
 #define CAMPOS_NMEA 12
 
 typedef struct {
@@ -112,6 +122,11 @@ typedef struct {
     double direccion;
     char fecha[LONG_MAX_FECHA];
 } GPSData;
+
+TaskHandle_t TaskHandle_Acce;
+TaskHandle_t TaskHandle_Imprime;
+TaskHandle_t TaskHandle_charGPS;
+TaskHandle_t TaskHandle_HANDLER;
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void cabeceraJSON() {
     const char *cabecera = "{ \"type\": \"FeatureCollection\",\n \"name\": \"GPS\",\n "
@@ -125,6 +140,24 @@ void finJSON() {
     SendString(pie);
     EscribeSD(pie);
 }
+
+static void PulsadorHandler(void* param) {
+    for(;;) {
+        if(!Bits1_GetVal()){
+			ledVerde_PutVal(1);
+			ledRojo_PutVal(0);
+			finJSON();
+            vTaskSuspend(TaskHandle_Imprime);
+        }
+		if(!Bit2_GetVal()){
+			vTaskResume(TaskHandle_Imprime);
+		}
+        // Añadir un pequeño retraso para evitar rebotes del botón y alta CPU
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+
 
 size_t escribeJSON(const GPSData* data, char* buffer, size_t buffer_size, int contadorName) {
     if (isnan(data->latitud) || isnan(data->longitud) || isnan(data->velocidad) || isnan(data->direccion)) {
@@ -141,7 +174,7 @@ size_t escribeJSON(const GPSData* data, char* buffer, size_t buffer_size, int co
 
 
     if (buffer_size < LONG_MAX_CADENA) {
-        fprintf(stderr, "Error: buffer insuficiente para JSON\n");
+        fprintf(stderr, "buffer insuficiente\n");
         return 0;
     }
     int escritos = snprintf(buffer, buffer_size,
@@ -170,7 +203,7 @@ size_t escribeJSON(const GPSData* data, char* buffer, size_t buffer_size, int co
 }
 
 void SendString(const char* cadena) {
-    size_t largo = strlen(cadena);
+    int largo = strlen(cadena);
     int enviados;
     if (largo > 0) {
         byte err = AS1_SendBlock(cadena, largo, &enviados);
@@ -313,9 +346,9 @@ void StorageOn(){
  * Procedimiento encargado de escribir en la tarjeta una cadena dada.
  * @param cadena Cadena que contiene los caracteres del GPS
  */
+
 void EscribeSD(char *cadena){
 	  UINT bandwidth;
-
 	  /* Abrir fichero */
 	  if (FAT1_open(&file, "./log_gps.txt", FA_OPEN_ALWAYS|FA_WRITE)!=FR_OK) {
 	    Err();
@@ -324,18 +357,22 @@ void EscribeSD(char *cadena){
 	  if (FAT1_lseek(&file, f_size(&file)) != FR_OK || file.fptr != f_size(&file)) {
 	    Err();
 	  }
-
 	  /* Se escribe la cadena en la microSD */
 	  if (FAT1_write(&file, cadena, UTIL1_strlen(cadena), &bandwidth)!=FR_OK) {
 		  (void)FAT1_close(&file);
 		  Err();
 	  }
-
 	  /* Cerrar el fichero */
 	  (void)FAT1_close(&file);
 }
 
+/*
 
+/*
+/*
+
+/*
+/*
 
 /*
  * Tarea que actualiza los valores de los ejes en cada instante.
@@ -349,8 +386,14 @@ static void Acce(void) {
 		  x = FX1_GetX();
 		  y = FX1_GetY();
 		  z = FX1_GetZ();
+
+
 		  vTaskDelay(500/portTICK_RATE_MS); //retraso de 1s
+
+
 	}
+
+
 }
 
 /*
@@ -368,8 +411,15 @@ static void Imprime(void) {
     bool inicioSentenciaDetectado = false;
     bool primeraentrada=true;
 
+    bool enviarpie=false;
+    printf("x: %d, y: %d, z: %d\n", x, y, z);
+
     StorageOn();
     for (;;) {
+        if(finalJSON) {
+            finJSON();
+            finalJSON = false;
+        }
         if (FRTOS1_xQueueReceive(caracteres, &ch, portMAX_DELAY) == pdTRUE) {
             // Inicio de una sentencia NMEA
             if (ch == '$') {
@@ -411,7 +461,8 @@ static void Imprime(void) {
             }
         }
     }
-    finJSON();
+
+
 }
 /*
  * Tarea encargada de introducir al final de la cola los caracteres del GPS.
@@ -422,7 +473,7 @@ static void CharGPS(void) {
 
 	GPS_ClearRxBuf(); //limpiamos el buffer del gps
 	for(;;) {
-		LEDR_Off(); LEDG_Neg(); //led verde
+		//LEDR_Off(); LEDG_Neg(); //led verde
 		do {err = GPS_RecvChar(&ch);
 		} while((err != ERR_OK));
 		FRTOS1_xQueueSendToBack(caracteres, &ch , (portTickType) 0xFFFFFFFF); //metemos el caracter a la cola
@@ -448,7 +499,7 @@ int main(void)
 
     // Creación de la tarea CharGPS
     if (xTaskCreate(
-        CharGPS, "gps", CHAR_GPS_STACK_SIZE, NULL, 3, NULL
+        CharGPS, "gps", CHAR_GPS_STACK_SIZE, NULL, 3, &TaskHandle_charGPS
     ) != pdPASS) {
         printf("Error al crear la tarea CharGPS\n");
         fflush(stdout);
@@ -460,7 +511,7 @@ int main(void)
 
     // Creación de la tarea Imprime
     if (xTaskCreate(
-        Imprime, "print", IMPRIME_STACK_SIZE, NULL, 4, NULL
+        Imprime, "print", IMPRIME_STACK_SIZE, NULL, 4, &TaskHandle_Imprime
     ) != pdPASS) {
         printf("Error al crear la tarea Imprime\n");
         for(;;);
@@ -471,13 +522,17 @@ int main(void)
 
     // Creación de la tarea Acce
     if (xTaskCreate(
-        Acce, "Acc", ACCE_STACK_SIZE, NULL, 2, NULL
+        Acce, "Acc", ACCE_STACK_SIZE, NULL, 2, &TaskHandle_Acce
     ) != pdPASS) {
         printf("Error al crear la tarea Acce\n");
         for(;;);
     } else {
         printf("Tarea Acce creada exitosamente\n");
         fflush(stdout);
+    }
+
+    if (xTaskCreate(PulsadorHandler, "HandlerPulsador", configMINIMAL_STACK_SIZE, NULL, 4, &TaskHandle_HANDLER) != pdPASS) {
+
     }
 
   /* For example: for(;;) { } */
