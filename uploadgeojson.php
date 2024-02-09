@@ -4,11 +4,13 @@
 * @author Guillermo Alcuaz
 */
 
+
 session_start();
 include 'db.php';
 //idUsuario con columna not null
 if (!isset($_SESSION['id_usuario'])) {
     header('Location: index.php');
+    exit;
 }
 
 $uploadDir = 'misgeoJSON/';
@@ -29,23 +31,23 @@ if (isset($_FILES['archivo'])) {
         if (move_uploaded_file($_FILES['archivo']['tmp_name'], $nombreRutaArchivo)) {
             $stmt = $conn->prepare("INSERT INTO archivos_subidos (id_usuario, archivo, ruta, fecha_subida) VALUES (?, ?, ?, NOW())");
             $stmt->bind_param("iss", $_SESSION['id_usuario'], $nombreArchivo, $nombreRutaArchivo);
-            if (!$stmt->execute()) {
-                header('Location: index.php');
-                exit;
+            if ($stmt->execute()) {
+                header('Location: uploadgeojson.php?ruta=' . ($nombreRutaArchivo));
+                $stmt->close();
+                exit;  
             }
             $stmt->close();
-        } else {
-            header('Location: index.php');
-            exit;
         }
-    } else {
-        header('Location: index.php');
-        exit;
     }
-} else {
-    header('Location: index.php');
     exit;
 }
+
+
+if (isset($_GET['ruta'])) {
+    $rutaArchivo = ($_GET['ruta']);
+}
+
+
 
 $conn->close();
 ?>
@@ -100,7 +102,8 @@ Object.defineProperty(window, 'devicePixelRatio', {
     get: function() {return dpi / 96}
 });
 
-var src = "./misgeoJSON/" + "<?php echo basename($nombreRutaArchivo); ?>";
+var src = "./misgeoJSON/" + "<?php echo htmlspecialchars(basename($rutaArchivo), ENT_QUOTES); ?>";
+
 
 map.on('load', function () {
 
