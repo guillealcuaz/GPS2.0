@@ -1,19 +1,17 @@
 <?php
-include 'db.php';
+include_once 'db.php';
 
 if (isset($_SESSION['id_usuario'])) {
     $idUsuario = $_SESSION['id_usuario'];
 
-    $consulta = $conn->prepare("SELECT archivo FROM archivos_subidos WHERE id_usuario = ?");
+    $consulta = $conn->prepare("SELECT ruta FROM archivos_subidos WHERE id_usuario = ?");
     $consulta->bind_param('i', $idUsuario); 
     $consulta->execute();
     $resultado = $consulta->get_result();
-    $carpeta = 'misgeoJSON/';
 
     echo "<ul>";
     while ($fila = $resultado->fetch_assoc()) {
-        $ruta = $carpeta . $fila['archivo'];
-        echo "<li><a href='" . $ruta . "'>" . $fila['archivo'] . "</a></li>"; 
+        echo "<li><a href='uploadgeojson.php?ruta=" . ($fila['ruta']) . "'>" . basename($fila['ruta']) . "</a></li>";
     }
     echo "</ul>";
     $consulta->close();
