@@ -185,6 +185,7 @@ static void PulsadorHandler(void* param) {
  */
 
 size_t escribeJSON(const GPSData* data, char* buffer, size_t buffer_size, int contadorName) {
+	char tiempoISO[50];
 
 	if (isnan(data->latitud) || isnan(data->longitud) || isnan(data->velocidad) || isnan(data->direccion)) {
         return 0;
@@ -198,8 +199,6 @@ size_t escribeJSON(const GPSData* data, char* buffer, size_t buffer_size, int co
     snprintf(latStr, sizeof(latStr), "%.6f", data->latitud);
     snprintf(velStr, sizeof(velStr), "%.1f mph", data->velocidad);
     snprintf(dirStr, sizeof(dirStr), "%.2f degrees", data->direccion);
-
-    char tiempoISO[50];
     formatearTiempoISO(tiempoISO, data->tiempo, data->fecha);
 
 
@@ -303,7 +302,11 @@ char extraerDato(GPSData* datos, char** token, void (*extractor)(GPSData*, const
  */
 
 void extraerTiempo(GPSData* datos, const char* token) {
-    strncpy(datos->tiempo, token, sizeof(datos->tiempo) - 1); //copiar tiempo en estructura
+    int longitudToken = strnlen(token, sizeof(datos->tiempo));
+    if(longitudToken >= sizeof(datos->tiempo)) {
+        Err();
+    }
+    strncpy(datos->tiempo, token, sizeof(datos->tiempo) - 1);
     datos->tiempo[sizeof(datos->tiempo) - 1] = '\0';
 }
 
@@ -324,6 +327,10 @@ void extraerEstado(GPSData* datos, const char* token) {
  */
 
 void extraerLatitud(GPSData* datos, const char* token) {
+    int longitudToken = strnlen(token, SIZE);
+    if(longitudToken >= SIZE) {
+        Err();
+    }
     strncpy(datos->latitudStr, token, SIZE - 1);
     datos->latitudStr[SIZE - 1] = '\0';
     datos->direccionLatitud = *(strtok(NULL, ","));
@@ -337,6 +344,10 @@ void extraerLatitud(GPSData* datos, const char* token) {
  */
 
 void extraerLongitud(GPSData* datos, const char* token) {
+    int longitudToken = strnlen(token, SIZE);
+    if(longitudToken >= SIZE) {
+        Err();
+    }
    strncpy(datos->longitudStr, token, SIZE - 1);
    datos->longitudStr[SIZE - 1] = '\0';
    datos->direccionLongitud = *(strtok(NULL, ","));
@@ -386,6 +397,10 @@ void formatearTiempoISO(char* destino, const char* tiempoNmea, const char* fecha
  */
 
 void extraerFecha(GPSData* datos, const char* token) {
+    int longitudToken = strnlen(token, sizeof(datos->fecha));
+    if(longitudToken >= sizeof(datos->fecha)) {
+        Err();
+    }
     strncpy(datos->fecha, token, sizeof(datos->fecha) - 1);
     datos->fecha[sizeof(datos->fecha) - 1] = '\0';
 }
@@ -427,7 +442,7 @@ char parseNMEASentence(const char* cadenaNmea, GPSData* datos) {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static void Err(void) {
+void Err(void) {
   for(;;){
 	  // Bucle infinito que se activa en caso de error
 	  // Garantiza que la ejecución se detiene aquí para detectar el rror
