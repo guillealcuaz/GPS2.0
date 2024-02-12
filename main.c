@@ -198,8 +198,6 @@ size_t escribeJSON(const GPSData* data, char* buffer, size_t buffer_size, int co
     snprintf(latStr, sizeof(latStr), "%.6f", data->latitud);
     snprintf(velStr, sizeof(velStr), "%.1f mph", data->velocidad);
     snprintf(dirStr, sizeof(dirStr), "%.2f degrees", data->direccion);
-
-
     formatearTiempoISO(tiempoISO, data->tiempo, data->fecha);
 
 
@@ -337,11 +335,18 @@ void extraerLatitud(GPSData* datos, const char* token) {
  */
 
 void extraerLongitud(GPSData* datos, const char* token) {
-   strncpy(datos->longitudStr, token, SIZE - 1);
-   datos->longitudStr[SIZE - 1] = '\0';
-   datos->direccionLongitud = *(strtok(NULL, ","));
-   datos->longitud = convertirADecimal(datos->longitudStr, datos->direccionLongitud);
+    int longToken = strlen(token);
+    if (longToken < SIZE - 1) {
+        strncpy(datos->longitudStr, token, SIZE - 1);
+        datos->longitudStr[SIZE - 1] = '\0';
+    } else {
+      Err();
+    }
+
+    datos->direccionLongitud = *(strtok(NULL, ","));
+    datos->longitud = convertirADecimal(datos->longitudStr, datos->direccionLongitud);
 }
+
 
 /**
  * Extrae la velocidad de un token y la almacena en la estructura GPSData.
@@ -386,11 +391,8 @@ void formatearTiempoISO(char* destino, const char* tiempoNmea, const char* fecha
  */
 
 void extraerFecha(GPSData* datos, const char* token) {
-	datos->fecha[sizeof(datos->fecha)-1] = 0;
-    strncpy(datos->fecha, token, sizeof(datos->fecha));
-    if (datos->fecha[sizeof(datos->fecha) - 1] != 0){
-    	Err();
-    }
+    strncpy(datos->fecha, token, sizeof(datos->fecha) - 1);
+    datos->fecha[sizeof(datos->fecha) - 1] = '\0';
 }
 
 /**
