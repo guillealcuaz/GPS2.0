@@ -6,7 +6,7 @@
 
 
 session_start();
-include 'db.php';
+include_once 'db.php';
 //idUsuario con columna not null
 if (!isset($_SESSION['id_usuario'])) {
     header('Location: index.php');
