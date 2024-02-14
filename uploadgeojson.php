@@ -7,7 +7,6 @@
 
 session_start();
 include_once 'db.php';
-//idUsuario con columna not null
 if (!isset($_SESSION['id_usuario'])) {
     header('Location: index.php');
     exit;
@@ -18,9 +17,12 @@ $uploadDir = 'misgeoJSON/';
 function esGeoJSON($archivo) {
     $contenido = file_get_contents($archivo['tmp_name']);
     $data = json_decode($contenido, true);
-    if ($data === null || !isset($data['type']) || !in_array($data['type'], ['FeatureCollection', 'Feature', 'Point', 'LineString', 'Polygon', 'MultiPoint', 'MultiLineString', 'MultiPolygon', 'GeometryCollection'])) {
+    if ($data === null || !isset($data['type']) ||
+     !in_array($data['type'], ['FeatureCollection', 'Feature', 'Point', 'LineString', 'Polygon',
+      'MultiPoint', 'MultiLineString', 'MultiPolygon', 'GeometryCollection'])) {
+
         return false;
-    }
+    } 
     return true;
 }
 
@@ -29,7 +31,8 @@ if (isset($_FILES['archivo'])) {
         $nombreArchivo = basename($_FILES['archivo']['name']);
         $nombreRutaArchivo = $uploadDir . date("j-m-Y_H-i-s_") . $nombreArchivo;
         if (move_uploaded_file($_FILES['archivo']['tmp_name'], $nombreRutaArchivo)) {
-            $stmt = $conn->prepare("INSERT INTO archivos_subidos (id_usuario, archivo, ruta, fecha_subida) VALUES (?, ?, ?, NOW())");
+            $stmt = $conn->prepare("INSERT INTO archivos_subidos 
+            (id_usuario, archivo, ruta, fecha_subida) VALUES (?, ?, ?, NOW())");
             $stmt->bind_param("iss", $_SESSION['id_usuario'], $nombreArchivo, $nombreRutaArchivo);
             if ($stmt->execute()) {
                 header('Location: uploadgeojson.php?ruta=' . ($nombreRutaArchivo));
@@ -38,6 +41,11 @@ if (isset($_FILES['archivo'])) {
             }
             $stmt->close();
         }
+    }   else{
+        
+        $_SESSION['error'] = "El archivo subido no es un archivo GeoJSON válido.";
+        header('Location: index.php');
+        exit;
     }
     exit;
 }
@@ -53,7 +61,7 @@ $conn->close();
 ?>
 
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
     <meta charset='utf-8' />
     <title>Interfaz GPS</title>
