@@ -54,6 +54,7 @@
 #include "TmDt1.h"
 #include "WAIT1.h"
 #include "TMOUT1.h"
+#include "HF1.h"
 #include "MCUC1.h"
 #include "CS1.h"
 #include "SM1.h"
@@ -89,26 +90,23 @@
 #include "ff.h"
 #include "TmDt1.h"
 
-TIMEREC time;   // Estructura para el tiempo
-DATEREC date;
 const static byte longitud = 155;
 const static byte tamano   = 1;
 static FAT1_FATFS fileSystemObject;
-volatile bool finalJSON=false;
 static FIL file;
-int16_t x;
-int16_t y;
-int16_t z;
+int16_t x,y,z;
 char cadena[256];
 static xQueueHandle caracteres;
+
 #define SIZE 64
 #define MAX_SIZE 1000
-#define LONG_MAX_FECHA 64
 #define LONG_MAX_CADENA 500
+
+// Stack Asignado a cada tarea
 #define CHAR_GPS_STACK_SIZE (configMINIMAL_STACK_SIZE *2)
 #define IMPRIME_STACK_SIZE (configMINIMAL_STACK_SIZE*4)
 #define ACCE_STACK_SIZE (configMINIMAL_STACK_SIZE*2)
-#define CAMPOS_NMEA 12
+
 
 /* Definición de la estructura GPSData que almacena los datos del GPS */
 typedef struct {
@@ -122,7 +120,7 @@ typedef struct {
     char estado;
     double velocidad;
     double direccion;
-    char fecha[LONG_MAX_FECHA];
+    char fecha[64];
 } GPSData;
 
 
@@ -131,49 +129,184 @@ TaskHandle_t TaskHandle_charGPS;
 TaskHandle_t TaskHandle_HANDLER;
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/**
+ * Convierte grados y minutos a formato decimal.
+ * @param gradosMinutosStr Cadena que contiene grados y minutos.
+ * @param direccion Caracter que indica la dirección (N, S, E, W).
+ * @return Valor decimal de los grados.
+ */
+
+double convertirADecimal(const char* gradosMinutosStr, char direccion) {
+    char gradosStr[4] = { 0 };
+    char minutosStr[10] = { 0 };
+    int gradosCount = (direccion == 'N' || direccion == 'S') ? 2 : 3;
+
+    strncpy(gradosStr, gradosMinutosStr, gradosCount);
+    strncpy(minutosStr, gradosMinutosStr + gradosCount, sizeof(minutosStr - 1));
+    double grados = atof(gradosStr);
+    double minutos = atof(minutosStr);
+    double decimal = grados + (minutos / 60.0);
+
+    if (direccion == 'S' || direccion == 'W') {
+        decimal = -decimal;
+    }
+
+    return decimal;
+}
 
 /**
- * Inicia la estructura de un objeto geoJSON que representa una colección de características para datos GPS.
- * La función envía la cabecera inicial de un JSON a través de una comunicación serial y también la escribe en una tarjeta SD.
+ * Formatea el tiempo en formato ISO a partir de una cadena de tiempo NMEA.
+ * @param destino Buffer donde se almacenará el tiempo formateado.
+ * @param tiempoNmea Cadena que contiene el tiempo en formato NMEA.
  */
-void cabeceraJSON() {
-    const char *cabecera = "{ \"type\": \"FeatureCollection\",\n \"name\": \"GPS\",\n "
-                           "\"features\": [\n";
-    SendString(cabecera);
-    EscribeSD(cabecera);
-}
-/**
- * Termina la estructura del objeto geoJSON que representa una colección de características para datos GPS.
- * La función envía el pie de cierre de un JSON a través de una comunicación serial y también lo escribe en una tarjeta SD.
- */
-void finJSON() {
-    const char *pie = " ] }";
-    SendString(pie);
-    EscribeSD(pie);
-}
-/**
- * Manejador para eventos de pulsador. Monitorea el estado de dos pulsadores y controla el flujo de la tarea `charGPS`.
- * Si el pulsador 1 está activado, detiene la tarea y finaliza la estructura JSON.
- * Si el pulsador 2 está activado, reanuda la tarea.
- *
- * @param param Parámetros pasados a la función (no utilizados en este contexto).
- */
-static void PulsadorHandler(void* param) {
-    for(;;) {
-        if(!Bits1_GetVal()){
-			ledVerde_PutVal(1);
-			ledRojo_PutVal(0);
-			finJSON();
-            vTaskSuspend(TaskHandle_charGPS);
-        }
-		if(!Bit2_GetVal()){
-			vTaskResume(TaskHandle_charGPS);
-		}
 
-        vTaskDelay(pdMS_TO_TICKS(100));
+void formatearTiempoISO(char* destino, const char* tiempoNmea, const char* fecha) {
+    // tiempo al formato HH:MM:SS+00
+    int horas, minutos, segundos;
+    int dia, mes, ano;
+    sscanf(tiempoNmea, "%2d%2d%2d", &horas, &minutos, &segundos);
+    sscanf(fecha, "%2d%2d%2d", &dia, &mes, &ano);
+    ano += 2000;
+    snprintf(destino, 50, "%04d-%02d-%02d_%02d:%02d:%02d", ano, mes, dia, horas, minutos, segundos);
+}
+
+
+/**
+ * Extrae un dato del GPS y lo procesa con la función extractor.
+ * @param datos Estructura GPSData para almacenar los datos extraídos.
+ * @param token Token actual de la cadena NMEA procesada.
+ * @param extractor Función para procesar el dato extraído.
+ * @return Caracter que indica el resultado de la extracción.
+ */
+
+char extraerDato(GPSData* datos, char** token, void (*extractor)(GPSData*, const char*)) {
+    *token = strtok(NULL, ",");
+    if (!*token) {
+        fprintf(stderr, "Error al extraer un dato.\n");
+        return 'E';
+    }
+    extractor(datos, *token);
+    return 'P';
+}
+
+/**
+ * Extrae el tiempo de un token y lo almacena en la estructura GPSData.
+ * @param datos Estructura GPSData para almacenar el tiempo.
+ * @param token Token que contiene el tiempo.
+ */
+
+void extraerTiempo(GPSData* datos, const char* token) {
+    strncpy(datos->tiempo, token, sizeof(datos->tiempo) - 1);
+    datos->tiempo[sizeof(datos->tiempo) - 1] = '\0';
+}
+
+/**
+ * Extrae el estado de un token y lo almacena en la estructura GPSData.
+ * @param datos Estructura GPSData para almacenar el estado.
+ * @param token Token que contiene el estado.
+ */
+void extraerEstado(GPSData* datos, const char* token) {
+    if (token[0] == 'A') {
+        datos->estado = 'A';
+    } else {
+        datos->estado = 'V';
+        Err();
     }
 }
 
+
+/**
+ * Extrae la latitud de un token y la convierte a formato decimal.
+ * @param datos Estructura GPSData para almacenar la latitud.
+ * @param token Token que contiene la latitud.
+ */
+
+void extraerLatitud(GPSData* datos, const char* token) {
+    strncpy(datos->latitudStr, token, SIZE - 1);
+    datos->latitudStr[SIZE - 1] = '\0';
+    datos->direccionLatitud = *(strtok(NULL, ","));
+    datos->latitud = convertirADecimal(datos->latitudStr, datos->direccionLatitud);
+}
+
+/**
+ * Extrae la longitud de un token y la convierte a formato decimal.
+ * @param datos Estructura GPSData para almacenar la longitud.
+ * @param token Token que contiene la longitud.
+ */
+
+void extraerLongitud(GPSData* datos, const char* token) {
+	strncpy(datos->longitudStr, token, SIZE - 1);
+    datos->longitudStr[SIZE - 1] = '\0';
+    datos->direccionLongitud = *(strtok(NULL, ","));
+    datos->longitud = convertirADecimal(datos->longitudStr, datos->direccionLongitud);
+}
+
+
+
+/**
+ * Extrae la velocidad de un token y la almacena en la estructura GPSData.
+ * @param datos Estructura GPSData para almacenar la velocidad.
+ * @param token Token que contiene la velocidad.
+ */
+
+void extraerVelocidad(GPSData* datos, const char* token) {
+    sscanf(token, "%lf", &datos->velocidad);
+    datos->velocidad = datos->velocidad * 1.15078;
+}
+
+/**
+ * Extrae la dirección de un token y la almacena en la estructura GPSData.
+ * @param datos Estructura GPSData para almacenar la dirección.
+ * @param token Token que contiene la dirección.
+ */
+void extraerDireccion(GPSData* datos, const char* token) {
+    sscanf(token, "%lf", &datos->direccion);
+}
+
+/**
+ * Extrae la fecha de un token y la almacena en la estructura GPSData.
+ * @param datos Estructura GPSData para almacenar la fecha.
+ * @param token Token que contiene la fecha.
+ */
+
+void extraerFecha(GPSData* datos, const char* token) {
+    strncpy(datos->fecha, token, sizeof(datos->fecha) - 1);
+    datos->fecha[sizeof(datos->fecha) - 1] = '\0';
+}
+
+
+/**
+ * Analiza una sentencia NMEA y extrae los datos relevantes para almacenarlos en una estructura GPSData.
+ * @param cadenaNmea La cadena NMEA a analizar.
+ * @param datos Estructura GPSData donde se almacenarán los datos extraídos.
+ * @return Caracter que indica el resultado del análisis ('P' para procesado correctamente, 'E' para error, 'I' para ignorado).
+ */
+
+
+char parseNMEASentence(const char* cadenaNmea, GPSData* datos) {
+    memset(datos, 0, sizeof(GPSData));
+    if (strncmp(cadenaNmea, "$GPRMC", 6) == 0) {
+    	char* token = strtok(cadenaNmea, ",");
+        if (!token) {
+            fprintf(stderr, "Error: Sentencia vacía.\n");
+            return 'E';
+        }
+
+        if (extraerDato(datos, &token, extraerTiempo) == 'E' ||
+            extraerDato(datos, &token, extraerEstado) == 'E' ||
+            extraerDato(datos, &token, extraerLatitud) == 'E' ||
+            extraerDato(datos, &token, extraerLongitud) == 'E' ||
+            extraerDato(datos, &token, extraerVelocidad) == 'E' ||
+            extraerDato(datos, &token, extraerDireccion) == 'E' ||
+            extraerDato(datos, &token, extraerFecha) == 'E') {
+            fprintf(stderr, "Error al procesar un campo específico de la sentencia GPRMC.\n");
+            return 'E';
+        }
+        return 'P';
+    } else {
+        return 'I';
+    }
+}
 
 /**
  * Escribe los datos de GPS en formato JSON en un buffer proporcionado.
@@ -241,198 +374,62 @@ void SendString(const char* cadena) {
     if (largo > 0) {
         byte err = AS1_SendBlock(cadena, largo, &enviados);
         if (err != ERR_OK) {
-            fprintf(stderr, "Error al enviar datos: %d\n", err);
+           fprintf(stderr, "Error al enviar datos: %d\n", err);
         } else {
-            printf("Bytes enviados: %u\n", enviados);
+           printf("Bytes enviados: %u\n", enviados);
         }
     }
 }
 
+
 /**
- * Convierte grados y minutos a formato decimal.
- * @param gradosMinutosStr Cadena que contiene grados y minutos.
- * @param direccion Caracter que indica la dirección (N, S, E, W).
- * @return Valor decimal de los grados.
+ * Inicia la estructura de un objeto geoJSON que representa una colección de características para datos GPS.
+ * La función envía la cabecera inicial de un JSON a través de una comunicación serial y también la escribe en una tarjeta SD.
  */
-
-double convertirADecimal(const char* gradosMinutosStr, char direccion) {
-    char gradosStr[4] = { 0 };
-    char minutosStr[10] = { 0 };
-
-    // primeros dos dígitos son los grados para la latitud y los primeros tres para la longitud
-    int gradosCount = (direccion == 'N' || direccion == 'S') ? 2 : 3;
-    strncpy(gradosStr, gradosMinutosStr, gradosCount);
-    strncpy(minutosStr, gradosMinutosStr + gradosCount, 9);
-
-    double grados = atof(gradosStr);
-    double minutos = atof(minutosStr);
-
-    double decimal = grados + (minutos / 60.0);
-
-    if (direccion == 'S' || direccion == 'W') {
-        decimal = -decimal;
-    }
-
-    return decimal;
+void cabeceraJSON() {
+    const char *cabecera = "{ \"type\": \"FeatureCollection\",\n \"name\": \"GPS\",\n "
+                           "\"features\": [\n";
+    SendString(cabecera);
+    EscribeSD(cabecera);
+}
+/**
+ * Termina la estructura del objeto geoJSON que representa una colección de características para datos GPS.
+ * La función envía el pie de cierre de un JSON a través de una comunicación serial y también lo escribe en una tarjeta SD.
+ */
+void finJSON() {
+    const char *pie = " ] }";
+    SendString(pie);
+    EscribeSD(pie);
 }
 
 /**
- * Extrae un dato del GPS y lo procesa con la función extractor.
- * @param datos Estructura GPSData para almacenar los datos extraídos.
- * @param token Token actual de la cadena NMEA procesada.
- * @param extractor Función para procesar el dato extraído.
- * @return Caracter que indica el resultado de la extracción.
+ * Manejador para eventos de pulsador. Monitorea el estado de dos pulsadores y controla el flujo de la tarea `charGPS`.
+ * Si el pulsador 1 está activado, detiene la tarea y finaliza la estructura JSON.
+ * Si el pulsador 2 está activado, reanuda la tarea.
+ *
+ * @param param Parámetros pasados a la función (no utilizados en este contexto).
  */
-
-char extraerDato(GPSData* datos, char** token, void (*extractor)(GPSData*, const char*)) {
-    *token = strtok(NULL, ",");
-    if (!*token) {
-        fprintf(stderr, "Error al extraer un dato.\n");
-        return 'E';
-    }
-    extractor(datos, *token);
-    return 'P';
-}
-
-/**
- * Extrae el tiempo de un token y lo almacena en la estructura GPSData.
- * @param datos Estructura GPSData para almacenar el tiempo.
- * @param token Token que contiene el tiempo.
- */
-
-void extraerTiempo(GPSData* datos, const char* token) {
-    strncpy(datos->tiempo, token, sizeof(datos->tiempo) - 1); //copiar tiempo en estructura
-    datos->tiempo[sizeof(datos->tiempo) - 1] = '\0';
-}
-
-/**
- * Extrae el estado del GPS de un token y lo almacena en la estructura GPSData.
- * @param datos Estructura GPSData para almacenar el estado.
- * @param token Token que contiene el estado.
- */
-
-void extraerEstado(GPSData* datos, const char* token) {
-    datos->estado = token[0];
-}
-
-/**
- * Extrae la latitud de un token y la convierte a formato decimal.
- * @param datos Estructura GPSData para almacenar la latitud.
- * @param token Token que contiene la latitud.
- */
-
-void extraerLatitud(GPSData* datos, const char* token) {
-    strncpy(datos->latitudStr, token, SIZE - 1);
-    datos->latitudStr[SIZE - 1] = '\0';
-    datos->direccionLatitud = *(strtok(NULL, ","));
-    datos->latitud = convertirADecimal(datos->latitudStr, datos->direccionLatitud);
-}
-
-/**
- * Extrae la longitud de un token y la convierte a formato decimal.
- * @param datos Estructura GPSData para almacenar la longitud.
- * @param token Token que contiene la longitud.
- */
-
-void extraerLongitud(GPSData* datos, const char* token) {
-    int longToken = strlen(token);
-    if (longToken < SIZE - 1) {
-        strncpy(datos->longitudStr, token, SIZE - 1);
-        datos->longitudStr[SIZE - 1] = '\0';
-    } else {
-      Err();
-    }
-
-    datos->direccionLongitud = *(strtok(NULL, ","));
-    datos->longitud = convertirADecimal(datos->longitudStr, datos->direccionLongitud);
-}
-
-
-/**
- * Extrae la velocidad de un token y la almacena en la estructura GPSData.
- * @param datos Estructura GPSData para almacenar la velocidad.
- * @param token Token que contiene la velocidad.
- */
-
-void extraerVelocidad(GPSData* datos, const char* token) {
-    sscanf(token, "%lf", &datos->velocidad);
-    datos->velocidad = datos->velocidad * 1.15078;
-}
-
-/**
- * Extrae la dirección de un token y la almacena en la estructura GPSData.
- * @param datos Estructura GPSData para almacenar la dirección.
- * @param token Token que contiene la dirección.
- */
-void extraerDireccion(GPSData* datos, const char* token) {
-    sscanf(token, "%lf", &datos->direccion);
-}
-
-/**
- * Formatea el tiempo en formato ISO a partir de una cadena de tiempo NMEA.
- * @param destino Buffer donde se almacenará el tiempo formateado.
- * @param tiempoNmea Cadena que contiene el tiempo en formato NMEA.
- */
-
-void formatearTiempoISO(char* destino, const char* tiempoNmea, const char* fecha) {
-    // tiempo al formato HH:MM:SS+00
-    int horas, minutos, segundos;
-    int dia, mes, ano;
-    sscanf(tiempoNmea, "%2d%2d%2d", &horas, &minutos, &segundos);
-    sscanf(fecha, "%2d%2d%2d", &dia, &mes, &ano);
-    ano += 2000;
-    snprintf(destino, 50, "%04d-%02d-%02d_%02d:%02d:%02d", ano, mes, dia, horas, minutos, segundos);
-}
-
-/**
- * Extrae la fecha de un token y la almacena en la estructura GPSData.
- * @param datos Estructura GPSData para almacenar la fecha.
- * @param token Token que contiene la fecha.
- */
-
-void extraerFecha(GPSData* datos, const char* token) {
-    strncpy(datos->fecha, token, sizeof(datos->fecha) - 1);
-    datos->fecha[sizeof(datos->fecha) - 1] = '\0';
-}
-
-/**
- * Analiza una sentencia NMEA y extrae los datos relevantes para almacenarlos en una estructura GPSData.
- * @param cadenaNmea La cadena NMEA a analizar.
- * @param datos Estructura GPSData donde se almacenarán los datos extraídos.
- * @return Caracter que indica el resultado del análisis ('P' para procesado correctamente, 'E' para error, 'I' para ignorado).
- */
-
-char parseNMEASentence(const char* cadenaNmea, GPSData* datos) {
-    memset(datos, 0, sizeof(GPSData)); // Limpia los datos anteriores
-    if (strncmp(cadenaNmea, "$GPRMC", 6) == 0) {
-    	char* token = strtok(cadenaNmea, ",");
-        if (!token) {
-            fprintf(stderr, "Error: Sentencia vacía.\n");
-            return 'E';
+static void PulsadorHandler(void* param) {
+    for(;;) {
+        if(!Bits1_GetVal()){
+			ledVerde_PutVal(1);
+			ledRojo_PutVal(0);
+			finJSON();
+            vTaskSuspend(TaskHandle_charGPS);
         }
+		if(!Bit2_GetVal()){
+			ledVerde_PutVal(0);
+    		cabeceraJSON();
+			vTaskResume(TaskHandle_charGPS);
+		}
 
-        if (extraerDato(datos, &token, extraerTiempo) == 'E' ||
-            extraerDato(datos, &token, extraerEstado) == 'E' ||
-            extraerDato(datos, &token, extraerLatitud) == 'E' ||
-            extraerDato(datos, &token, extraerLongitud) == 'E' ||
-            extraerDato(datos, &token, extraerVelocidad) == 'E' ||
-            extraerDato(datos, &token, extraerDireccion) == 'E' ||
-            extraerDato(datos, &token, extraerFecha) == 'E') {
-            fprintf(stderr, "Error al procesar un campo específico de la sentencia GPRMC.\n");
-            return 'E';
-        }
-        return 'P';
-    } else {
-        // Sentencia no GPRMC, no se procesa
-        return 'I';
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
-
-
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-static void Err(void) {
+void Err(void) {
   for(;;){
 	  // Bucle infinito que se activa en caso de error
 	  // Garantiza que la ejecución se detiene aquí para detectar el rror
@@ -502,36 +499,25 @@ static void Acce(void) {
  */
 
 static void Imprime(void) {
-    char bufferDeSentencia[LONG_MAX_CADENA];
-    int indexBuffer = 0;
     GPSData datos;
-    char geojsonBuffer[LONG_MAX_CADENA];
+    char bufferDeSentencia[LONG_MAX_CADENA];
     char ch;
+    char geojsonBuffer[LONG_MAX_CADENA];
     int contadorName = 0;
+    int indexBuffer = 0;
     bool inicioSentenciaDetectado = false;
-    bool primeraentrada=true;
-
-    bool enviarpie=false;
-
     StorageOn();
+
     for (;;) {
         if (FRTOS1_xQueueReceive(caracteres, &ch, portMAX_DELAY) == pdTRUE) {
-        	if(primeraentrada){
-        		cabeceraJSON();
-        		primeraentrada=false;
-        	}
-            // Inicio de una sentencia NMEA
             if (ch == '$') {
                 inicioSentenciaDetectado = true;
                 indexBuffer = 0;
             }
-
             if (inicioSentenciaDetectado) {
-                // Agrega el caracter al buffer y avanza el índice
                 bufferDeSentencia[indexBuffer++] = ch;
-                //Final de sentencia
                 if (ch == '\n' || ch == '\r') {
-                    bufferDeSentencia[indexBuffer] = '\0'; // Cadena terminada
+                    bufferDeSentencia[indexBuffer] = '\0';
                     char resultado = parseNMEASentence(bufferDeSentencia, &datos);
                     if (resultado == 'P') {
                         if (contadorName > 0) {
@@ -544,7 +530,7 @@ static void Imprime(void) {
                         //	if( x>500 || x<-500 || y>500 || y<-500 ){
                         		SendString(geojsonBuffer);
                         		EscribeSD(geojsonBuffer);
-                        	//}
+                        //		}
                         }
                     }
                     inicioSentenciaDetectado = false;
@@ -552,7 +538,6 @@ static void Imprime(void) {
                 }
 
                 if (indexBuffer >= LONG_MAX_CADENA) {
-                    // Buffer desbordado
                     inicioSentenciaDetectado = false;
                     indexBuffer = 0;
                 }
@@ -569,7 +554,6 @@ static void Imprime(void) {
 static void CharGPS(void) {
 	byte err;
 	char ch;
-
 	GPS_ClearRxBuf(); //limpiamos el buffer del gps
 	for(;;) {
 		do {err = GPS_RecvChar(&ch);
@@ -577,6 +561,8 @@ static void CharGPS(void) {
 		FRTOS1_xQueueSendToBack(caracteres, &ch , (portTickType) 0xFFFFFFFF); //metemos el caracter a la cola
 	}
 }
+
+
 
 /* User includes (#include below this line is not maintained by Processor Expert) */
 /*lint -save  -e970 Disable MISRA rule (6.3) checking. */
@@ -591,7 +577,6 @@ int main(void)
 
 
   /* Write your code here */
-
 
 
     // Creación de la tarea CharGPS
@@ -613,7 +598,7 @@ int main(void)
         printf("Error al crear la tarea Imprime\n");
         for(;;);
     } else {
-        printf("Tarea Imprime creada exitosamente\n");
+       printf("Tarea Imprime creada exitosamente\n");
         fflush(stdout);
     }
 
@@ -621,19 +606,21 @@ int main(void)
     if (xTaskCreate(
         Acce, "Acc", ACCE_STACK_SIZE, NULL, 2, NULL
     ) != pdPASS) {
-        printf("Error al crear la tarea Acce\n");
+       printf("Error al crear la tarea Acce\n");
         for(;;);
     } else {
         printf("Tarea Acce creada exitosamente\n");
         fflush(stdout);
     }
-
-    if (xTaskCreate(PulsadorHandler, "HandlerPulsador", configMINIMAL_STACK_SIZE, NULL, 4, TaskHandle_HANDLER) != pdPASS) {
-
+    if (xTaskCreate(PulsadorHandler, "HandlerPulsador", configMINIMAL_STACK_SIZE, NULL, 4, TaskHandle_HANDLER
+    ) != pdPASS) {
+    	Err();
     }
-
   /* For example: for(;;) { } */
+
+  vTaskSuspend(TaskHandle_charGPS);
   FRTOS1_vTaskStartScheduler();
+
 
 
   /*** Don't write any code pass this line, or it will be deleted during code generation. ***/
@@ -659,3 +646,4 @@ int main(void)
 **
 ** ###################################################################
 */
+
