@@ -1,0 +1,375 @@
+/* ###################################################################
+**     Filename    : main.c
+**     Project     : PARSEADOR
+**     Processor   : MK64FN1M0VLL12
+**     Version     : Driver 01.01
+**     Compiler    : GNU C Compiler
+**     Date/Time   : 2024-01-12, 11:12, # CodeGen: 0
+**     Abstract    :
+**         Main module.
+**         This module contains user's application code.
+**     Settings    :
+**     Contents    :
+**         No public methods
+**
+** ###################################################################*/
+/*!
+** @file main.c
+** @version 01.01
+** @brief
+**         Main module.
+**         This module contains user's application code.
+*/         
+/*!
+**  @addtogroup main_module main module documentation
+**  @{
+*/         
+/* MODULE main */
+
+
+/* Including needed modules to compile this module/procedure */
+#include "Cpu.h"
+#include "Events.h"
+#include "Pins1.h"
+#include "ASerialLdd1.h"
+/* Including shared modules, which are used for whole project */
+#include "AS1.h"
+#include "PE_Types.h"
+#include "PE_Error.h"
+#include "PE_Const.h"
+#include "IO_Map.h"
+#include "PDD_Includes.h"
+#include "Init_Config.h"
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <stdbool.h>
+#define LONG_MAX_CADENA 10000
+#define SIZE 64
+#define LONG_MAX_NAME 64
+#define LONG_MAX_DESC 64
+#define LONG_MAX_FECHA 64
+
+
+typedef struct {
+    char latitudStr[SIZE];
+    char longitudStr[SIZE];
+    double latitud;
+    double longitud;
+    char tiempo[20];
+    char direccionLatitud;
+    char direccionLongitud;
+    char estado;
+    double velocidad;
+    double direccion;
+    double altitud;
+    char fecha[LONG_MAX_FECHA];
+    char name[LONG_MAX_NAME];
+    char description[LONG_MAX_DESC];
+} GPSData;
+double ultimaVelocidad = 0.0;
+double ultimaDireccion = 0.0;
+
+
+/* User includes (#include below this line is not maintained by Processor Expert) */
+double convertirADecimal(const char* gradosMinutosStr, char direccion) {
+    char gradosStr[4] = { 0 };
+    char minutosStr[10] = { 0 };
+
+    // primeros dos dígitos son los grados para la latitud y los primeros tres para la longitud
+    int gradosCount = (direccion == 'N' || direccion == 'S') ? 2 : 3;
+    strncpy(gradosStr, gradosMinutosStr, gradosCount);
+    strncpy(minutosStr, gradosMinutosStr + gradosCount, 9);
+
+    double grados = atof(gradosStr);
+    double minutos = atof(minutosStr);
+
+    double decimal = grados + (minutos / 60.0);
+
+    if (direccion == 'S' || direccion == 'W') {
+        decimal = -decimal;
+    }
+
+    return decimal;
+}
+_Bool verificarCadenaNmeaCopia(const char* cadenaNmeaCopia) {
+    if (!cadenaNmeaCopia) {
+        perror("Error al duplicar la cadena NMEA"); //null si error
+        return false;
+    }
+    return true;
+}
+
+
+char extraerDato(GPSData* datos, char** token, void (*extractor)(GPSData*, const char*)) {
+    *token = strtok(NULL, ","); //coge el siguiente token
+    if (!*token) {
+        fprintf(stderr, "Error al extraer un dato.\n");
+        return 'E';
+    }
+    extractor(datos, *token); //llamar a extractor con token actual
+    return 'P'; // Procesado
+}
+
+void extraerTiempo(GPSData* datos, const char* token) {
+    strncpy(datos->tiempo, token, sizeof(datos->tiempo) - 1); //copiar tiempo en estructura
+    datos->tiempo[sizeof(datos->tiempo) - 1] = '\0';
+}
+
+void extraerEstado(GPSData* datos, const char* token) {
+    datos->estado = token[0];
+}
+
+void extraerAltitud(GPSData* datos, const char* token) {
+    // Saltar los campos hasta llegar al campo de altitud
+    for (int i = 0; i < 4; ++i) {
+        token = strtok(NULL, ",");
+        if (!token) {
+            fprintf(stderr, "Error al extraer altitud.\n");
+            datos->altitud = 0.0;
+            return;
+        }
+    }
+
+    // Extraer la altitud
+    char* alt;
+    datos->altitud = strtod(token, &alt);
+    if (alt == token) {
+        datos->altitud = 0.0;
+    }
+    printf("Altitud extraída: %.2f\n", datos->altitud); // Depuración
+}
+
+
+void extraerLongitud(GPSData* datos, const char* token) {
+    strncpy(datos->longitudStr, token, SIZE - 1);
+    datos->direccionLongitud = *(strtok(NULL, ","));
+    datos->longitud = convertirADecimal(datos->longitudStr, datos->direccionLongitud);
+}
+
+void extraerLatitud(GPSData* datos, const char* token) {
+    // Copia la cadena de latitud al struct
+    strncpy(datos->latitudStr, token, SIZE - 1);
+
+    //dirección de la latitud, siguiente en el NMEA
+    datos->direccionLatitud = *(strtok(NULL, ","));
+
+    //latitud a un valor decimal
+    datos->latitud = convertirADecimal(datos->latitudStr, datos->direccionLatitud);
+}
+
+
+void extraerVelocidad(GPSData* datos, const char* token) {
+    double velocidadNudos = atof(token);
+    double velocidadMph = velocidadNudos * 1.15078;
+    datos->velocidad = ceil(velocidadMph * 10.0) / 10.0;
+    ultimaVelocidad = datos->velocidad; // Actualiza la última velocidad
+}
+
+void extraerDireccion(GPSData* datos, const char* token) {
+    datos->direccion = atof(token);
+    ultimaDireccion = datos->direccion; // Actualiza la última dirección
+}
+char* my_strdup(const char* s) {
+    char* p = malloc(strlen(s) + 1);  // +1 para el carácter nulo
+    if (p != NULL) {
+        strcpy(p, s);
+    }
+    return p;
+}
+
+
+void formatearTiempoISO(char* destino, const char* tiempoNmea) {
+    // tiempo al formato HH:MM:SS+00
+    int horas, minutos, segundos;
+    sscanf(tiempoNmea, "%2d%2d%2d", &horas, &minutos, &segundos);
+    snprintf(destino, 25, "%02d:%02d:%02d+00", horas, minutos, segundos);
+}
+char parseNMEASentence(const char* cadenaNmea, GPSData* datos) {
+    memset(datos, 0, sizeof(GPSData));
+    char* cadenaNmeaCopia = my_strdup(cadenaNmea); // copia cadena a 0
+    if (!verificarCadenaNmeaCopia(cadenaNmeaCopia)) {
+        free(cadenaNmeaCopia);
+        return 'E';
+    }
+    //tokenizar la cadena por comas
+    char* token = strtok(cadenaNmeaCopia, ",");
+    if (!token) {
+        fprintf(stderr, "Error: Sentencia NMEA vacía.\n");
+        free(cadenaNmeaCopia);
+        return 'I';
+    }
+
+    if (strncmp(token, "$GPRMC", 6) == 0) {
+        // Procesamiento específico para $GPRMC
+        if (extraerDato(datos, &token, extraerTiempo) == 'E') { free(cadenaNmeaCopia); return 'E'; }
+        if (extraerDato(datos, &token, extraerEstado) == 'E') { free(cadenaNmeaCopia); return 'E'; }
+        if (extraerDato(datos, &token, extraerLatitud) == 'E') { free(cadenaNmeaCopia); return 'E'; }
+        if (extraerDato(datos, &token, extraerLongitud) == 'E') { free(cadenaNmeaCopia); return 'E'; }
+        if (extraerDato(datos, &token, extraerVelocidad) == 'E') { free(cadenaNmeaCopia); return 'E'; }
+        if (extraerDato(datos, &token, extraerDireccion) == 'E') { free(cadenaNmeaCopia); return 'E'; }
+    }
+    else if (strncmp(token, "$GPGGA", 6) == 0) {
+        printf("Procesando GPGGA\n");
+        // Procesamiento específico para $GPGGA
+        if (extraerDato(datos, &token, extraerTiempo) == 'E') { free(cadenaNmeaCopia); return 'E'; }
+        if (extraerDato(datos, &token, extraerLatitud) == 'E') { free(cadenaNmeaCopia); return 'E'; }
+        if (extraerDato(datos, &token, extraerLongitud) == 'E') { free(cadenaNmeaCopia); return 'E'; }
+        extraerAltitud(datos, token);  // altitud directamente (no hay gprmc)
+        datos->velocidad = ultimaVelocidad; // última velocidad
+        datos->direccion = ultimaDireccion; // última dirección
+    }
+    else {
+        fprintf(stderr, "Error: Sentencia NMEA no reconocida '%s'.\n", token);
+        free(cadenaNmeaCopia);
+        return 'I';
+    }
+
+    free(cadenaNmeaCopia);
+    return 'P';
+}
+void SendChar(char ch) {
+    while(AS1_SendChar(ch) != ERR_OK) {}
+}
+void SendString(const char* str) {
+    size_t len = strlen(str);  // Calcula la longitud de la cadena
+    unsigned int sent = 0;     // Variable para almacenar el número de bytes enviados
+
+    if (len > 0) {
+        byte err = AS1_SendBlock(str, len, &sent);  // Envía el bloque de datos
+        if (err != ERR_OK) {
+            // Manejo de errores
+            fprintf(stderr, "Error al enviar datos: %d\n", err);
+        } else {
+            // Opcional: Confirmación de la cantidad de datos enviados
+            printf("Bytes enviados: %u\n", sent);
+        }
+    }
+}
+
+
+size_t escribeJSON(const GPSData* data, char* buffer, size_t buffer_size, int contadorName) {
+    // Convertir datos numéricos a cadenas
+	if (isnan(data->latitud) || isnan(data->longitud) || isnan(data->velocidad) ||
+	    isnan(data->direccion) || isnan(data->altitud)) {
+	    fprintf(stderr, "Error: Datos numéricos inválidos en GPSData\n");
+	    return 0;
+	}
+	char latStr[20] = {0}, lonStr[20] = {0}, speedStr[20] = {0}, dirStr[20] = {0}, altStr[20] = {0};
+    snprintf(latStr, sizeof(latStr), "%.6f", data->latitud);
+    snprintf(lonStr, sizeof(lonStr), "%.6f", data->longitud);
+    snprintf(speedStr, sizeof(speedStr), "%.1f", data->velocidad);
+    snprintf(dirStr, sizeof(dirStr), "%.2f", data->direccion);
+    snprintf(altStr, sizeof(altStr), "%.2f", data->altitud * 3.28084); // Conversión a pies
+
+    char tiempoISO[25];
+    formatearTiempoISO(tiempoISO, data->tiempo); // Asegúrate de que esta función funcione correctamente
+    // Asegurarse de que el buffer es suficientemente grande para la salida esperada
+    if (buffer_size < LONG_MAX_CADENA) {
+        fprintf(stderr, "Error: buffer insuficiente para JSON\n");
+        return 0;
+    }
+
+    // Formatear la cadena JSON
+    int escritos = snprintf(buffer, buffer_size,
+        "{ \"type\": \"Feature\", \"properties\": { "
+        "\"Name\": \"%d\", "
+        "\"timestamp\": \"%s\", "
+        "\"Field_1\": \"Longitude: %s\", "
+        "\"Field_2\": \"Latitude: %s\", "
+        "\"Field_3\": \"Altitude: %s ft\", "
+        "\"Field_4\": \"Speed: %s mph\", "
+        "\"Field_5\": \"Direction: %s degrees\" }, "
+        "\"geometry\": { \"type\": \"Point\", \"coordinates\": [ %s, %s ] } }",
+        contadorName,
+        tiempoISO,
+        lonStr,
+        latStr,
+        altStr,
+        speedStr,
+        dirStr,
+        lonStr,
+        latStr);
+
+    if (escritos < 0 || escritos >= buffer_size) {
+        // Si hay un error en la escritura o si el buffer no es suficientemente grande.
+        fprintf(stderr, "Error al escribir JSON o buffer insuficiente\n");
+        return 0;
+    }
+
+    return (size_t)escritos;
+}
+
+
+int main(void) {
+  /*** Processor Expert internal initialization. DON'T REMOVE THIS CODE!!! ***/
+  PE_low_level_init();
+  /*** End of Processor Expert internal initialization.                    ***/
+
+  /* Write your code here */
+  /* For example: for(;;) { } */
+
+    system("chcp 65001 > nul");
+    const char* nmeaSentences[] = {
+"$GPRMC,170924.000,A,4220.9607,N,00341.3251,W,0.59,195.78,171218,,,A * 78",
+"$GPVTG,195.78,T,,M,0.59,N,1.10,K,A * 33",
+"$GPGGA,170925.000,4220.9613,N,00341.3256,W,1,05,1.90,676.9,M,51.6,M,,* 7A",
+"$GPGSA,A,3,10,28,24,20,15,,,,,,,,2.14,1.90,0.98 * 07",
+"$GPGSV,2,1,08,15,84,194,27,24,61,295,33,13,49,120,,12,30,206,22 * 74",
+"$GPGSV,2,2,08,20,29,292,24,28,18,042,17,10,16,318,32,40,07,105,* 7E",
+"$GPRMC,170925.000,A,4220.9613,N,00341.3256,W,0.40,213.30,171218,,,A * 72",
+"$GPVTG,213.30,T,,M,0.40,N,0.74,K,A * 39",
+"$GPGGA,170926.000,4220.9618,N,00341.3263,W,1,05,1.90,678.1,M,51.6,M,,* 72",
+"$GPGSA,A,3,10,28,24,20,15,,,,,,,,2.13,1.90,0.98 * 00",
+"$GPRMC,170926.000,A,4220.9618,N,00341.3263,W,0.36,192.07,171218,,,A * 73",
+"$GPVTG,192.07,T,,M,0.36,N,0.66,K,A * 35",
+"$GPGGA,170927.000,4220.9623,N,00341.3272,W,1,05,1.90,679.4,M,51.6,M,,* 7F",
+"$GPGSA,A,3,10,28,24,20,15,,,,,,,,2.13,1.90,0.98 * 00",
+"$GPRMC,170927.000,A,4220.9623,N,00341.3272,W,0.56,238.26,171218,,,A * 7C",
+"$GPVTG,238.26,T,,M,0.56,N,1.04,K,A * 36",
+"$GPGGA,170928.000,4220.9628,N,00341.3276,W,1,05,1.90,681.1,M,51.6,M,,* 7D",
+"$GPGSA,A,3,10,28,24,20,15,,,,,,,,2.14,1.90,0.98 * 07",
+"$GPRMC,170928.000,A,4220.9628,N,00341.3276,W,0.58,207.50,171218,,,A * 7F",
+"$GPVTG,207.50,T,,M,0.58,N,1.08,K,A * 39"
+    };
+    size_t numSentences = sizeof(nmeaSentences) / sizeof(nmeaSentences[0]);
+
+    GPSData datos;
+    int contadorName = 0; // el contador paraName
+
+    char featureBuffer[LONG_MAX_CADENA];
+        SendString("{ \"type\": \"FeatureCollection\", \"name\": \"Points\", "
+                   "\"crs\": { \"type\": \"name\", \"properties\": { \"name\": \"urn:ogc:def:crs:OGC:1.3:CRS84\" } }, "
+                   "\"features\": [");
+
+        for (size_t i = 0; i < numSentences; ++i) {
+            char resultado = parseNMEASentence(nmeaSentences[i], &datos);
+            if (resultado == 'P') {
+                memset(featureBuffer, 0, LONG_MAX_CADENA); // Limpiar el buffer de la feature
+                size_t escribe = escribeJSON(&datos, featureBuffer, LONG_MAX_CADENA, contadorName);
+                if (escribe > 0) {
+                    if (i > 0) {
+                        SendString(", "); // Agregar coma entre features
+                    }
+                    SendString(featureBuffer); // Enviar la feature JSON
+                } else {
+                    fprintf(stderr, "Error al escribir feature JSON\n");
+                    break;
+                }
+                contadorName--; // Decrementa el contador para el próximo punto
+            }
+        }
+
+        SendString(" ] }");
+
+  /*** Don't write any code pass this line, or it will be deleted during code generation. ***/
+  /*** RTOS startup code. Macro PEX_RTOS_START is defined by the RTOS component. DON'T MODIFY THIS CODE!!! ***/
+  #ifdef PEX_RTOS_START
+    PEX_RTOS_START();                  /* Startup of the selected RTOS. Macro is defined by the RTOS component. */
+  #endif
+  /*** End of RTOS startup code.  ***/
+  /*** Processor Expert end of main routine. DON'T MODIFY THIS CODE!!! ***/
+  for(;;){}
+  /*** Processor Expert end of main routine. DON'T WRITE CODE BELOW!!! ***/
+} /*** End of main routine. DO NOT MODIFY THIS TEXT!!! ***/
