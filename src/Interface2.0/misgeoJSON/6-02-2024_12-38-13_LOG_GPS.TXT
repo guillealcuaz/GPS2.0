@@ -1,0 +1,12 @@
+{ "type": "FeatureCollection",
+ "name": "GPS",
+ "features": [
+{ "type": "Feature", "properties": { "Name": "0", "timestamp": "11:21:24+00", "Field_1": "Longitude: -3.697828", "Field_2": "Latitude: 42.336902", "Field_3": "Speed: 0.5 mph", "Field_4": "Direction: 0.02 degrees" }, "geometry": { "type": "Point", "coordinates": [ -3.697828, 42.336902 ] } },
+{ "type": "Feature", "properties": { "Name": "1", "timestamp": "11:21:25+00", "Field_1": "Longitude: -3.697828", "Field_2": "Latitude: 42.336903", "Field_3": "Speed: 0.5 mph", "Field_4": "Direction: 8.48 degrees" }, "geometry": { "type": "Point", "coordinates": [ -3.697828, 42.336903 ] } },
+{ "type": "Feature", "properties": { "Name": "2", "timestamp": "11:21:26+00", "Field_1": "Longitude: -3.697828", "Field_2": "Latitude: 42.336905", "Field_3": "Speed: 0.6 mph", "Field_4": "Direction: 10.03 degrees" }, "geometry": { "type": "Point", "coordinates": [ -3.697828, 42.336905 ] } },
+{ "type": "Feature", "properties": { "Name": "3", "timestamp": "11:21:27+00", "Field_1": "Longitude: -3.697827", "Field_2": "Latitude: 42.336907", "Field_3": "Speed: 0.7 mph", "Field_4": "Direction: 16.13 degrees" }, "geometry": { "type": "Point", "coordinates": [ -3.697827, 42.336907 ] } },
+{ "type": "Feature", "properties": { "Name": "4", "timestamp": "11:21:28+00", "Field_1": "Longitude: -3.697827", "Field_2": "Latitude: 42.336910", "Field_3": "Speed: 0.7 mph", "Field_4": "Direction: 6.22 degrees" }, "geometry": { "type": "Point", "coordinates": [ -3.697827, 42.336910 ] } },
+{ "type": "Feature", "properties": { "Name": "5", "timestamp": "11:21:29+00", "Field_1": "Longitude: -3.697825", "Field_2": "Latitude: 42.336912", "Field_3": "Speed: 0.8 mph", "Field_4": "Direction: 350.51 degrees" }, "geometry": { "type": "Point", "coordinates": [ -3.697825, 42.336912 ] } },
+{ "type": "Feature", "properties": { "Name": "6", "timestamp": "11:21:30+00", "Field_1": "Longitude: -3.697827", "Field_2": "Latitude: 42.336910", "Field_3": "Speed: 0.8 mph", "Field_4": "Direction: 359.73 degrees" }, "geometry": { "type": "Point", "coordinates": [ -3.697827, 42.336910 ] } },
+{ "type": "Feature", "properties": { "Name": "7", "timestamp": "11:21:31+00", "Field_1": "Longitude: -3.697825", "Field_2": "Latitude: 42.336918", "Field_3": "Speed: 0.8 mph", "Field_4": "Direction: 0.67 degrees" }, "geometry": { "type": "Point", "coordinates": [ -3.697825, 42.336918 ] } }
+ ]}

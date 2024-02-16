@@ -1,0 +1,263 @@
+<!-- Pagina de Inicio de NMEA Visualizer
+    @author: Alejandro Fernández Lampreave & Guillermo Alcuaz -->
+
+
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+    <title>NMEA Visualizer</title>
+
+    <!-- Bootstrap core CSS -->
+    <link href="vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- Custom fonts for this template -->
+    <link href="vendor/fontawesome-free/css/all.min.css" rel="stylesheet">
+    <link href="vendor/simple-line-icons/css/simple-line-icons.css" rel="stylesheet" type="text/css">
+    <link href="https://fonts.googleapis.com/css?family=Lato:300,400,700,300italic,400italic,700italic" rel="stylesheet" type="text/css">
+
+    <!-- Custom styles for this template -->
+    <link href="css/landing-page.min.css" rel="stylesheet">
+    <link href="css/landing-page.css" rel="stylesheet">
+  
+    <style>
+        #upload {display:inline-block; top:0; bottom:0;  margin:auto; }
+    </style>
+
+  </head>
+
+  <body>
+
+    <!-- Navigation -->
+    <nav class="navbar navbar-light bg-light static-top">
+      <div class="container">
+        <a class="navbar-brand" href="#">NMEA Visualizer</a>
+        <?php
+        if (session_status() == PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (isset($_SESSION['id_usuario'])) {
+            echo '<a href="logout.php" class="btn btn-primary">Cerrar sesión</a>';
+        } else {
+            echo '<a href="login.html" class="btn btn-primary">Iniciar sesión</a>';
+        }
+        ?>
+      </div>
+    </nav>
+
+<?php
+if (isset($_SESSION['error'])) {
+    echo '<div class="alert alert-danger text-center">' . $_SESSION['error'] . '</div>';
+    unset($_SESSION['error']);
+}
+?>
+
+    
+<!-- Masthead -->
+<header class="masthead text-white text-center">
+  <div class="overlay"></div>
+  <div class="container">
+    <div class="row">
+      <div class="col-lg-6">
+        <h1 class="mb-5">Sube tu ruta, ¡nosotros te la mostramos!</h1>
+        <form action="uploadgeojson.php" method="post" enctype="multipart/form-data">
+          <div class="form-row">
+            <div id='upload'>
+              <input type="file" class="btn btn-block btn-lg btn-primary" name="archivo" id="archivo">
+              <input type="submit" class="btn btn-block btn-lg btn-primary" value="Subir archivo">
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="col-lg-6" id="historico">
+        <h2>Tus archivos</h2>
+        <?php
+        if (session_status() == PHP_SESSION_NONE) {
+            session_start();
+        }
+        if (isset($_SESSION['id_usuario'])) {
+               include_once 'historico.php';
+        } else {
+            echo "<p>Inicia sesión.</p>";
+        }
+          ?>
+      </div>
+    </div>
+  </div>
+</header>
+
+    <!-- Icons Grid -->
+    <section class="features-icons bg-light text-center">
+      <div class="container">
+        <div class="row">
+          <div class="col-lg-4">
+            <div class="features-icons-item mx-auto mb-5 mb-lg-0 mb-lg-3">
+              <div class="features-icons-icon d-flex">
+                <i class="icon-screen-desktop m-auto text-primary"></i>
+              </div>
+              <h3>Diseño web adaptable</h3>
+              <p class="lead mb-0">Puedes subir tus archivos desde cualquier dispositivo, ¡nos adaptamos a todos!</p>
+            </div>
+          </div>
+          <div class="col-lg-4">
+            <div class="features-icons-item mx-auto mb-5 mb-lg-0 mb-lg-3">
+              <div class="features-icons-icon d-flex">
+                <i class="icon-layers m-auto text-primary"></i>
+              </div>
+              <h3>Mapbox</h3>
+              <p class="lead mb-0">Trabajamos junto con Mapbox, para mostrar tus mapas de forma gratuita y ¡para siempre!</p>
+            </div>
+          </div>
+          <div class="col-lg-4">
+            <div class="features-icons-item mx-auto mb-0 mb-lg-3">
+              <div class="features-icons-icon d-flex">
+                <i class="icon-check m-auto text-primary"></i>
+              </div>
+              <h3>Fácil de usar</h3>
+              <p class="lead mb-0">¡Preparado para mostrar los archivos de tu GPS particular!</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Image Showcases -->
+    <section class="showcase">
+      <div class="container-fluid p-0">
+        <div class="row no-gutters">
+
+          <div class="col-lg-6 order-lg-2 text-white showcase-img" style="background-image: url('img/bg-showcase-1.jpg');"></div>
+          <div class="col-lg-6 order-lg-1 my-auto showcase-text">
+            <h2>Mostramos tu ruta</h2>
+            <p class="lead mb-0">Sube tu archivo en formato NMEA y nosotros nos encargamos de convertirlo y mostrártelo. ¡Luego tu decides si quieres bajarte una imagen del mapa o simplemente subir otro!</p>
+          </div>
+        </div>
+        <div class="row no-gutters">
+          <div class="col-lg-6 text-white showcase-img" style="background-image: url('img/bg-showcase-2.jpg');"></div>
+          <div class="col-lg-6 my-auto showcase-text">
+            <h2>Te facilitamos un GPS</h2>
+            <p class="lead mb-0">Si no dispones de ningún GPS a mano, no te preocupes, ¡nosotros ponemos a tu disposición, por muy poco, uno ya programado y listo para registrar rutas!</p>
+          </div>
+        </div>
+        <div class="row no-gutters">
+          <div class="col-lg-6 order-lg-2 text-white showcase-img" style="background-image: url('img/bg-showcase-3.jpg');"></div>
+          <div class="col-lg-6 order-lg-1 my-auto showcase-text">
+            <h2>Herramientas</h2>
+            <p class="lead mb-0"> ¡Aprovéchate de las herramientas que tienes a tu disposición, vuela hasta tu geolocalización, descárgate una imagen de la ruta mostrada o simplemnete navega por el mapa!</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Testimonials -->
+    <section class="testimonials text-center bg-light">
+      <div class="container">
+        <h2 class="mb-5">¡Otros usuarios ya lo han probado!</h2>
+        <div class="row">
+          <div class="col-lg-4">
+            <div class="testimonial-item mx-auto mb-5 mb-lg-0">
+              <img class="img-fluid rounded-circle mb-3" src="img/testimonials-1.jpg" alt="">
+              <h5>Beatriz P.</h5>
+              <p class="font-weight-light mb-0">"La página es fantástica. ¡Muchas gracias chicos, me viene genial para mostrar mis rutas en bicicleta!"</p>
+            </div>
+          </div>
+          <div class="col-lg-4">
+            <div class="testimonial-item mx-auto mb-5 mb-lg-0">
+              <img class="img-fluid rounded-circle mb-3" src="img/testimonials-2.jpg" alt="">
+              <h5>Alejandro F.</h5>
+              <p class="font-weight-light mb-0">"La herramienta es genial. ¡La he estado utilizando para ver mis rutas del fin de semana y poder compartir las imágenes con mis amigos!"</p>
+            </div>
+          </div>
+          <div class="col-lg-4">
+            <div class="testimonial-item mx-auto mb-5 mb-lg-0">
+              <img class="img-fluid rounded-circle mb-3" src="img/testimonials-3.jpg" alt="">
+              <h5>Paula T.</h5>
+              <p class="font-weight-light mb-0">"Gracias por desarrollar esta página. ¡Ahora puedo controlar mi flota de vehículos!"</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Call to Action -->
+    <section class="call-to-action text-white text-center">
+      <div class="overlay"></div>
+      <div class="container">
+        <div class="row">
+          <div class="col-xl-9 mx-auto">
+            <h2 class="mb-4">¿Tienes alguna duda? ¡Déjanos tu correo! </h2>
+          </div>
+          <div class="col-md-10 col-lg-8 col-xl-7 mx-auto">
+            <form>
+              <div class="form-row">
+                <div class="col-12 col-md-9 mb-2 mb-md-0">
+                  <input type="email" class="form-control form-control-lg" placeholder="Enter your email...">
+                </div>
+                <div class="col-12 col-md-3">
+                  <button type="submit" class="btn btn-block btn-lg btn-primary">Enviar</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer bg-light">
+      <div class="container">
+        <div class="row">
+          <div class="col-lg-6 h-100 text-center text-lg-left my-auto">
+            <ul class="list-inline mb-2">
+              <li class="list-inline-item">
+                <a href="#">About</a>
+              </li>
+              <li class="list-inline-item">&sdot;</li>
+              <li class="list-inline-item">
+                <a href="#">Contact</a>
+              </li>
+              <li class="list-inline-item">&sdot;</li>
+              <li class="list-inline-item">
+                <a href="#">Terms of Use</a>
+              </li>
+              <li class="list-inline-item">&sdot;</li>
+              <li class="list-inline-item">
+                <a href="#">Privacy Policy</a>
+              </li>
+            </ul>
+            <p class="text-muted small mb-4 mb-lg-0">&copy; Your Website 2018. All Rights Reserved.</p>
+          </div>
+          <div class="col-lg-6 h-100 text-center text-lg-right my-auto">
+            <ul class="list-inline mb-0">
+              <li class="list-inline-item mr-3">
+                <a href="#">
+                  <i class="fab fa-facebook fa-2x fa-fw"></i>
+                </a>
+              </li>
+              <li class="list-inline-item mr-3">
+                <a href="#">
+                  <i class="fab fa-twitter-square fa-2x fa-fw"></i>
+                </a>
+              </li>
+              <li class="list-inline-item">
+                <a href="#">
+                  <i class="fab fa-instagram fa-2x fa-fw"></i>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </footer>
+
+  </body>
+
+</html>
