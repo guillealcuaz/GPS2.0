@@ -1,0 +1,216 @@
+{
+  "id": "dc5be316-16d4-4f5c-97db-da860bf8ca86",
+  "version": "2.0",
+  "name": "GPSMAPA",
+  "url": "http://localhost/interface2.0/uploadgeojson.php?ruta=misgeoJSON/16-02-2024_00-20-08_15-02-2024_18-12-51_LOG_GPS.TXT",
+  "tests": [{
+    "id": "2692a4a5-dcdb-4194-b687-649804bf5369",
+    "name": "GPSMAPA",
+    "commands": [{
+      "id": "cec640d7-39f1-474c-ab24-781ce7259aee",
+      "comment": "",
+      "command": "open",
+      "target": "http://localhost/interface2.0/uploadgeojson.php?ruta=misgeoJSON/16-02-2024_00-20-08_15-02-2024_18-12-51_LOG_GPS.TXT",
+      "targets": [],
+      "value": ""
+    }, {
+      "id": "3dc866a3-da4b-4565-bae5-38e99e2ea761",
+      "comment": "",
+      "command": "setWindowSize",
+      "target": "1176x1032",
+      "targets": [],
+      "value": ""
+    }, {
+      "id": "91622599-60c4-4d69-901d-ca422ecd7f2a",
+      "comment": "",
+      "command": "mouseDownAt",
+      "target": "css=.mapboxgl-canvas",
+      "targets": [
+        ["css=.mapboxgl-canvas", "css:finder"],
+        ["xpath=//div[@id='map']/div[2]/canvas", "xpath:idRelative"],
+        ["xpath=//canvas", "xpath:position"]
+      ],
+      "value": "708,212.40625"
+    }, {
+      "id": "ed907ae3-3659-4153-804c-c1ebb2cf6988",
+      "comment": "",
+      "command": "mouseMoveAt",
+      "target": "css=.mapboxgl-canvas",
+      "targets": [
+        ["css=.mapboxgl-canvas", "css:finder"],
+        ["xpath=//div[@id='map']/div[2]/canvas", "xpath:idRelative"],
+        ["xpath=//canvas", "xpath:position"]
+      ],
+      "value": "708,212.40625"
+    }, {
+      "id": "938977ef-6938-44fa-a728-d57d0d54f541",
+      "comment": "",
+      "command": "mouseUpAt",
+      "target": "css=.mapboxgl-canvas",
+      "targets": [
+        ["css=.mapboxgl-canvas", "css:finder"],
+        ["xpath=//div[@id='map']/div[2]/canvas", "xpath:idRelative"],
+        ["xpath=//canvas", "xpath:position"]
+      ],
+      "value": "708,212.40625"
+    }, {
+      "id": "74bc92c1-c1af-4194-a7ee-67581265ff45",
+      "comment": "",
+      "command": "mouseDownAt",
+      "target": "css=.mapboxgl-canvas",
+      "targets": [
+        ["css=.mapboxgl-canvas", "css:finder"],
+        ["xpath=//div[@id='map']/div[2]/canvas", "xpath:idRelative"],
+        ["xpath=//canvas", "xpath:position"]
+      ],
+      "value": "741,79.40625"
+    }, {
+      "id": "07c7a7cc-1266-492b-9cec-3dd50dae0ce0",
+      "comment": "",
+      "command": "mouseMoveAt",
+      "target": "css=.mapboxgl-canvas",
+      "targets": [
+        ["css=.mapboxgl-canvas", "css:finder"],
+        ["xpath=//div[@id='map']/div[2]/canvas", "xpath:idRelative"],
+        ["xpath=//canvas", "xpath:position"]
+      ],
+      "value": "741,79.40625"
+    }, {
+      "id": "a280eccb-3973-46da-bed3-7409efc036da",
+      "comment": "",
+      "command": "mouseUpAt",
+      "target": "css=.mapboxgl-canvas",
+      "targets": [
+        ["css=.mapboxgl-canvas", "css:finder"],
+        ["xpath=//div[@id='map']/div[2]/canvas", "xpath:idRelative"],
+        ["xpath=//canvas", "xpath:position"]
+      ],
+      "value": "741,79.40625"
+    }, {
+      "id": "d7dbd964-66eb-4226-92b7-2d39355cd1bd",
+      "comment": "",
+      "command": "mouseDownAt",
+      "target": "css=.mapboxgl-canvas",
+      "targets": [
+        ["css=.mapboxgl-canvas", "css:finder"],
+        ["xpath=//div[@id='map']/div[2]/canvas", "xpath:idRelative"],
+        ["xpath=//canvas", "xpath:position"]
+      ],
+      "value": "663,473.40625"
+    }, {
+      "id": "e3787b2b-7622-46fd-9b55-2c62cbcaa3af",
+      "comment": "",
+      "command": "mouseMoveAt",
+      "target": "css=.mapboxgl-canvas",
+      "targets": [
+        ["css=.mapboxgl-canvas", "css:finder"],
+        ["xpath=//div[@id='map']/div[2]/canvas", "xpath:idRelative"],
+        ["xpath=//canvas", "xpath:position"]
+      ],
+      "value": "663,473.40625"
+    }, {
+      "id": "8d7738d3-9930-4b04-adfc-d5562f96f51f",
+      "comment": "",
+      "command": "mouseUpAt",
+      "target": "css=.mapboxgl-canvas",
+      "targets": [
+        ["css=.mapboxgl-canvas", "css:finder"],
+        ["xpath=//div[@id='map']/div[2]/canvas", "xpath:idRelative"],
+        ["xpath=//canvas", "xpath:position"]
+      ],
+      "value": "663,473.40625"
+    }, {
+      "id": "f988b223-b82c-4832-a4da-b81b9e0d6d17",
+      "comment": "",
+      "command": "mouseDownAt",
+      "target": "css=.mapboxgl-canvas",
+      "targets": [
+        ["css=.mapboxgl-canvas", "css:finder"],
+        ["xpath=//div[@id='map']/div[2]/canvas", "xpath:idRelative"],
+        ["xpath=//canvas", "xpath:position"]
+      ],
+      "value": "432,514.40625"
+    }, {
+      "id": "91782411-1591-46e6-920c-3e25b9bd3656",
+      "comment": "",
+      "command": "mouseMoveAt",
+      "target": "css=.mapboxgl-canvas",
+      "targets": [
+        ["css=.mapboxgl-canvas", "css:finder"],
+        ["xpath=//div[@id='map']/div[2]/canvas", "xpath:idRelative"],
+        ["xpath=//canvas", "xpath:position"]
+      ],
+      "value": "432,514.40625"
+    }, {
+      "id": "ff8e5c66-4ec2-4856-8467-53b72415435b",
+      "comment": "",
+      "command": "mouseUpAt",
+      "target": "css=.mapboxgl-canvas",
+      "targets": [
+        ["css=.mapboxgl-canvas", "css:finder"],
+        ["xpath=//div[@id='map']/div[2]/canvas", "xpath:idRelative"],
+        ["xpath=//canvas", "xpath:position"]
+      ],
+      "value": "432,514.40625"
+    }, {
+      "id": "72a526e7-a797-47a1-b51b-c61443d0f6c0",
+      "comment": "",
+      "command": "mouseDownAt",
+      "target": "css=.mapboxgl-canvas",
+      "targets": [
+        ["css=.mapboxgl-canvas", "css:finder"],
+        ["xpath=//div[@id='map']/div[2]/canvas", "xpath:idRelative"],
+        ["xpath=//canvas", "xpath:position"]
+      ],
+      "value": "622,404.40625"
+    }, {
+      "id": "0ec618cf-5285-4f31-a08a-98fbd317530d",
+      "comment": "",
+      "command": "mouseMoveAt",
+      "target": "css=.mapboxgl-canvas",
+      "targets": [
+        ["css=.mapboxgl-canvas", "css:finder"],
+        ["xpath=//div[@id='map']/div[2]/canvas", "xpath:idRelative"],
+        ["xpath=//canvas", "xpath:position"]
+      ],
+      "value": "622,404.40625"
+    }, {
+      "id": "e780a0c2-5efb-41b8-998e-7f0005fd1bab",
+      "comment": "",
+      "command": "mouseUpAt",
+      "target": "css=.mapboxgl-canvas",
+      "targets": [
+        ["css=.mapboxgl-canvas", "css:finder"],
+        ["xpath=//div[@id='map']/div[2]/canvas", "xpath:idRelative"],
+        ["xpath=//canvas", "xpath:position"]
+      ],
+      "value": "622,404.40625"
+    }, {
+      "id": "db0b339c-59f1-4835-b8dd-0c474c8a2f03",
+      "comment": "",
+      "command": "click",
+      "target": "id=home",
+      "targets": [
+        ["id=home", "id"],
+        ["linkText=Volver a inicio", "linkText"],
+        ["css=#home", "css:finder"],
+        ["xpath=//a[contains(text(),'Volver a inicio')]", "xpath:link"],
+        ["xpath=//a[@id='home']", "xpath:attributes"],
+        ["xpath=//a[contains(@href, 'index.php')]", "xpath:href"],
+        ["xpath=//body/a", "xpath:position"],
+        ["xpath=//a[contains(.,'Volver a inicio')]", "xpath:innerText"]
+      ],
+      "value": ""
+    }]
+  }],
+  "suites": [{
+    "id": "d4cea010-1f10-4f50-bc82-3a30d6fe5afa",
+    "name": "Default Suite",
+    "persistSession": false,
+    "parallel": false,
+    "timeout": 300,
+    "tests": ["2692a4a5-dcdb-4194-b687-649804bf5369"]
+  }],
+  "urls": ["http://localhost/interface2.0/uploadgeojson.php?ruta=misgeoJSON/16-02-2024_00-20-08_15-02-2024_18-12-51_LOG_GPS.TXT"],
+  "plugins": []
+}
